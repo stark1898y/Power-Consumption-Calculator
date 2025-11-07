@@ -28,6 +28,7 @@ def convert_from_seconds(seconds, unit):
         return seconds
 
 
+
 class PowerConsumeCalculator:
     def __init__(self, root):
         self.root = root
@@ -43,9 +44,23 @@ class PowerConsumeCalculator:
         battery_frame = ttk.LabelFrame(main_frame, text="电池信息", padding="10")
         battery_frame.pack(fill="x", pady=10)
 
+        # 添加电池类型选择
+        ttk.Label(battery_frame, text="电池类型:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        self.battery_type_var = tk.StringVar(value="锂电池")
+        battery_type_combo = ttk.Combobox(battery_frame, textvariable=self.battery_type_var,
+                                        values=["锂电池", "一次性锂亚电池", "碱性干电池"],
+                                        state="readonly", width=15)
+        battery_type_combo.grid(row=2, column=1, padx=5, pady=5)
+        battery_type_combo.bind("<<ComboboxSelected>>", self.on_battery_type_change)
+
         ttk.Label(battery_frame, text="电池电压 (V):").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.voltage_var = tk.StringVar(value="3.6")
         ttk.Entry(battery_frame, textvariable=self.voltage_var, width=10).grid(row=0, column=1, padx=5, pady=5)
+
+        # 在 battery_frame 中添加终止电压
+        ttk.Label(battery_frame, text="终止电压 (V):").grid(row=1, column=2, sticky="w", padx=5, pady=5)
+        self.end_voltage_var = tk.StringVar(value="3.0")
+        ttk.Entry(battery_frame, textvariable=self.end_voltage_var, width=10).grid(row=1, column=3, padx=5, pady=5)
 
         ttk.Label(battery_frame, text="电池容量 (mAh):").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.capacity_var = tk.StringVar(value="19000")
@@ -400,12 +415,50 @@ class PowerConsumeCalculator:
             new_values[4] = sleep_duration
             self.mode_table.item(sleep_item, values=new_values)
 
+    def on_battery_type_change(self, event=None):
+        """根据电池类型自动设置终止电压和经验系数"""
+        battery_type = self.battery_type_var.get()
+
+        settings = {
+            "锂电池": {"voltage": "3.6", "end_voltage": "3.0", "factor": "0.85"},
+            "一次性锂亚电池": {"voltage": "3.6", "end_voltage": "2.0", "factor": "0.9"},
+            "碱性干电池": {"voltage": "1.5", "end_voltage": "1.0", "factor": "0.7"}
+        }
+
+        if battery_type in settings:
+            setting = settings[battery_type]
+            self.voltage_var.set(setting["voltage"])
+            self.end_voltage_var.set(setting["end_voltage"])
+            self.experience_factor_var.set(setting["factor"])
+
     def calculate(self):
         """执行计算"""
         try:
             # 获取电池信息
             voltage = float(self.voltage_var.get())
+            end_voltage = float(self.end_voltage_var.get())
             capacity = float(self.capacity_var.get())
+
+            raw_capacity = float(self.capacity_var.get())
+
+            # 容量单位转换（如果支持uAh）
+            if hasattr(self, 'capacity_unit_var'):
+                capacity_unit = self.capacity_unit_var.get()
+                if capacity_unit == "uAh":
+                    capacity = raw_capacity / 1000
+                else:
+                    capacity = raw_capacity
+            else:
+                capacity = raw_capacity
+
+            # 计算平均工作电压
+            average_voltage = (voltage + end_voltage) / 2
+
+            # 总能量（mWh）
+            total_energy_mwh = capacity * average_voltage
+
+            # 应用经验系数
+            usable_energy_mwh = total_energy_mwh * float(self.experience_factor_var.get())
 
             # 获取工作模式数据
             modes = []
