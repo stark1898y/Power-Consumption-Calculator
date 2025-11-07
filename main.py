@@ -28,7 +28,6 @@ def convert_from_seconds(seconds, unit):
         return seconds
 
 
-
 class PowerConsumeCalculator:
     def __init__(self, root):
         self.root = root
@@ -434,39 +433,58 @@ class PowerConsumeCalculator:
     def calculate(self):
         """执行计算"""
         try:
-            # 获取电池信息
+            # 获取并验证电池信息
             voltage = float(self.voltage_var.get())
             end_voltage = float(self.end_voltage_var.get())
-            capacity = float(self.capacity_var.get())
-
             raw_capacity = float(self.capacity_var.get())
+            experience_factor = float(self.experience_factor_var.get())
 
-            # 容量单位转换（如果支持uAh）
-            if hasattr(self, 'capacity_unit_var'):
-                capacity_unit = self.capacity_unit_var.get()
-                if capacity_unit == "uAh":
-                    capacity = raw_capacity / 1000
-                else:
-                    capacity = raw_capacity
-            else:
-                capacity = raw_capacity
+            if voltage <= 0 or end_voltage <= 0:
+                raise ValueError("电池电压必须为正数")
+
+            if raw_capacity <= 0:
+                raise ValueError("电池容量必须为正数")
+
+            if not (0 < experience_factor <= 1):
+                raise ValueError("经验系数应在0到1之间")
 
             # 计算平均工作电压
             average_voltage = (voltage + end_voltage) / 2
 
-            # 总能量（mWh）
-            total_energy_mwh = capacity * average_voltage
-
-            # 应用经验系数
-            usable_energy_mwh = total_energy_mwh * float(self.experience_factor_var.get())
-
             # 获取工作模式数据
-            modes = []
-            for item in self.mode_table.get_children():
-                values = self.mode_table.item(item, "values")
-                if len(values) < 6:
-                    continue
+            modes = self._get_mode_data(voltage)  # 传递voltage参数
+            if not modes:
+                messagebox.showwarning("警告", "请至少添加一个工作模式")
+                return
 
+            # 计算每日总功耗（mWh）
+            daily_total_energy = sum(mode['daily_energy_mwh'] for mode in modes)
+
+            # 根据计算模式进行计算
+            if self.calc_mode.get() == "续航时间":
+                self._calculate_battery_life(voltage, raw_capacity, experience_factor,
+                                        daily_total_energy, modes)
+            elif self.calc_mode.get() == "所需容量":
+                input_value = float(self.input_var.get())
+                if input_value <= 0:
+                    raise ValueError("输入值必须为正数")
+                self._calculate_required_capacity(input_value, voltage, experience_factor,
+                                                daily_total_energy, modes)
+
+        except ValueError as e:
+            messagebox.showerror("输入错误", f"请输入有效的数字: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("计算错误", f"计算过程中发生错误: {str(e)}")
+
+    def _get_mode_data(self, voltage):
+        """提取并处理工作模式数据"""
+        modes = []
+        for item in self.mode_table.get_children():
+            values = self.mode_table.item(item, "values")
+            if len(values) < 6:
+                continue
+
+            try:
                 mode_name = values[0]
                 current_unit = values[1]
                 current_value = float(values[2])
@@ -475,10 +493,7 @@ class PowerConsumeCalculator:
                 times_per_day = int(values[5])
 
                 # 转换为 mA
-                if current_unit == "uA":
-                    current_ma = current_value / 1000
-                else:
-                    current_ma = current_value
+                current_ma = current_value / 1000 if current_unit == "uA" else current_value
 
                 # 转换为秒
                 seconds = convert_to_seconds(duration_value, duration_unit)
@@ -489,88 +504,82 @@ class PowerConsumeCalculator:
                 # 每天总功耗（mWh）
                 daily_energy_mwh = energy_per_cycle_mwh * times_per_day
 
-                modes.append((mode_name, current_ma, seconds, energy_per_cycle_mwh, daily_energy_mwh))
+                modes.append({
+                    'name': mode_name,
+                    'current_ma': current_ma,
+                    'seconds': seconds,
+                    'times_per_day': times_per_day,
+                    'energy_per_cycle_mwh': energy_per_cycle_mwh,
+                    'daily_energy_mwh': daily_energy_mwh
+                })
+            except (ValueError, TypeError) as e:
+                messagebox.showwarning("警告", f"模式 '{values[0]}' 数据有误: {str(e)}")
+                continue
 
-            if not modes:
-                messagebox.showwarning("警告", "请至少添加一个工作模式")
-                return
+        return modes
 
-            # 获取输入值
-            input_value = float(self.input_var.get())
+    def _calculate_battery_life(self, voltage, capacity, experience_factor,
+                           daily_total_energy, modes):
+        """计算电池续航时间"""
+        # 总能量（mWh）
+        total_energy_mwh = capacity * voltage
 
-            # 计算每日总功耗（mWh）
-            daily_total_energy = sum(daily_energy_mwh for _, _, _, _, daily_energy_mwh in modes)
+        # 应用经验系数：实际可用能量减少
+        usable_energy_mwh = total_energy_mwh * experience_factor
 
-            # 根据计算模式进行计算
-            if self.calc_mode.get() == "续航时间":
-                # 计算续航时间
-                if capacity <= 0:
-                    messagebox.showerror("错误", "电池容量不能为0或负数")
-                    return
+        # 可使用天数
+        if daily_total_energy <= 0:
+            raise ValueError("每日功耗必须为正数")
 
-                # 总能量（mWh）
-                total_energy_mwh = capacity * voltage
+        days = usable_energy_mwh / daily_total_energy
 
-                # 应用经验系数：实际可用能量减少
-                usable_energy_mwh = total_energy_mwh * float(self.experience_factor_var.get())
+        # 转换为小时、年
+        hours = days * 24
+        years = days / 365.25
 
-                # 可使用天数
-                days = total_energy_mwh / daily_total_energy
+        # 格式化结果
+        result = f"电池容量: {capacity:.2f} mAh\n"
+        result += f"电池电压: {voltage:.2f} V\n"
+        result += f"总能量: {total_energy_mwh:.2f} mWh\n"
+        result += f"考虑经验系数后的可用能量: {usable_energy_mwh:.2f} mWh\n"
+        result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
+        result += f"设备可使用时间: {hours:.2f} 小时 ({days:.2f} 天, {years:.2f} 年)\n\n"
+        result += "工作模式详情:\n"
 
-                # 转换为小时、年
-                hours = days * 24
-                years = days / 365.25
+        for mode in modes:
+            result += f"  - {mode['name']}: {mode['current_ma']:.2f} mA, {mode['seconds']:.2f} s, "
+            result += f"{mode['energy_per_cycle_mwh']:.4f} mWh/次, 每天{mode['times_per_day']}次, "
+            result += f"共{mode['daily_energy_mwh']:.4f} mWh\n"
 
-                # 格式化结果
-                result = f"电池容量: {capacity:.2f} mAh\n"
-                result += f"电池电压: {voltage:.2f} V\n"
-                result += f"总能量: {total_energy_mwh:.2f} mWh\n"
-                result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
-                result += f"设备可使用时间: {hours:.2f} 小时 ({days:.2f} 天, {years:.2f} 年)\n\n"
-                result += "工作模式详情:\n"
+        self.display_result(result)
 
-                for mode_name, current_ma, seconds, energy_per_cycle_mwh, daily_energy_mwh in modes:
-                    result += f"  - {mode_name}: {current_ma:.2f} mA, {seconds:.2f} s, "
-                    result += f"{energy_per_cycle_mwh:.4f} mWh/次, 每天{times_per_day}次, "
-                    result += f"共{daily_energy_mwh:.4f} mWh\n"
+    def _calculate_required_capacity(self, input_value, voltage, experience_factor,
+                                daily_total_energy, modes):
+        """计算所需电池容量"""
+        # 输入的是 ms，转换为秒
+        input_seconds = input_value / 1000
 
-                self.display_result(result)
+        # 计算所需总能量（mWh）
+        required_energy_mwh = daily_total_energy * (input_seconds / 86400)  # 按比例缩放
 
-            elif self.calc_mode.get() == "所需容量":
-                # 计算所需电池容量
-                if input_value <= 0:
-                    messagebox.showerror("错误", "输入值不能为0或负数")
-                    return
+        # 考虑经验系数：需要更大的电池来补偿损耗
+        required_capacity = required_energy_mwh / (voltage * experience_factor)
 
-                # 输入的是 ms，转换为秒
-                input_seconds = input_value / 1000
+        # 格式化结果
+        result = f"输入续航时间: {input_value:.2f} ms ({input_seconds:.2f} 秒)\n"
+        result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
+        result += f"所需电池容量: {required_capacity:.2f} mAh\n"
+        result += f"(考虑了 {experience_factor} 的经验系数)\n\n"
+        result += "工作模式详情:\n"
 
-                # 计算所需总能量（mWh）
-                required_energy_mwh = daily_total_energy * (input_seconds / 86400)  # 按比例缩放
+        for mode in modes:
+            result += f"  - {mode['name']}: {mode['current_ma']:.2f} mA, {mode['seconds']:.2f} s, "
+            result += f"{mode['energy_per_cycle_mwh']:.4f} mWh/次, 每天{mode['times_per_day']}次, "
+            result += f"共{mode['daily_energy_mwh']:.4f} mWh\n"
 
-                # 考虑经验系数：需要更大的电池来补偿损耗
-                required_capacity = required_energy_mwh / (voltage * float(self.experience_factor_var.get()))
+        self.display_result(result)
 
-                # 所需容量（mAh）
-                required_capacity = required_energy_mwh / voltage
-
-                # 格式化结果
-                result = f"输入续航时间: {input_value:.2f} ms\n"
-                result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
-                result += f"所需电池容量: {required_capacity:.2f} mAh\n\n"
-                result += "工作模式详情:\n"
-
-                for mode_name, current_ma, seconds, energy_per_cycle_mwh, daily_energy_mwh in modes:
-                    result += f"  - {mode_name}: {current_ma:.2f} mA, {seconds:.2f} s, "
-                    result += f"{energy_per_cycle_mwh:.4f} mWh/次, 每天{times_per_day}次, "
-                    result += f"共{daily_energy_mwh:.4f} mWh\n"
-
-                self.display_result(result)
-
-        except ValueError as e:
-            messagebox.showerror("输入错误", f"请输入有效的数字: {str(e)}")
-
-    def display_result(self, result):
+    def display_result(self, result):  # 修复缩进问题
         """显示计算结果"""
         self.result_text.configure(state="normal")
         self.result_text.delete(1.0, tk.END)
