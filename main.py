@@ -51,18 +51,28 @@ class PowerConsumeCalculator:
         self.capacity_var = tk.StringVar(value="19000")
         ttk.Entry(battery_frame, textvariable=self.capacity_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
+        # 在 battery_frame 中添加经验系数
+        ttk.Label(battery_frame, text="经验系数:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.experience_factor_var = tk.StringVar(value="0.7")
+        ttk.Entry(battery_frame, textvariable=self.experience_factor_var, width=10).grid(row=1, column=1, padx=5, pady=5)
+
         # 工作模式输入区域
-        mode_frame = ttk.LabelFrame(main_frame, text="工作模式设置", padding="10")
+        mode_frame = ttk.LabelFrame(main_frame, text="工作模式设置", padding="5")
         mode_frame.pack(fill="x", pady=10)
 
         # 创建一个容器Frame来包含表格和水平滚动条
         table_container = ttk.Frame(mode_frame)
-        table_container.pack(fill="x", pady=5)
+        table_container.pack(fill="x", pady=2)
+
+        # 关键：禁止容器自动扩展，并设置固定高度
+        table_container.pack_propagate(False)
+        table_container.configure(height=120)  # 根据你的需求调整
 
         # 工作模式表格（现在使用容器Frame）
         self.mode_table = ttk.Treeview(table_container,
                                        columns=("mode", "current_unit", "current_value", "duration_unit",
-                                                "duration_value", "times_per_day"), show="headings")
+                                                "duration_value", "times_per_day"), show="headings",
+                                                height=5) # 只显示 5 行
 
         # 设置列宽（更紧凑）
         self.mode_table.heading("mode", text="模式")
@@ -71,7 +81,7 @@ class PowerConsumeCalculator:
         self.mode_table.heading("current_unit", text="电流单位")
         self.mode_table.column("current_unit", width=50, anchor="center")
 
-        self.mode_table.heading("current_value", text="电流值")
+        self.mode_table.heading("current_value", text="平均电流")
         self.mode_table.column("current_value", width=65, anchor="center")
 
         self.mode_table.heading("duration_unit", text="时长单位")
@@ -96,11 +106,11 @@ class PowerConsumeCalculator:
 
         # 添加/删除按钮
         btn_frame = ttk.Frame(mode_frame)
-        btn_frame.pack(fill="x", pady=5)
+        btn_frame.pack(fill="x", pady=2)
 
-        ttk.Button(btn_frame, text="添加模式", command=self.add_mode).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="删除模式", command=self.delete_mode).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="清空模式", command=self.clear_modes).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="添加模式", command=self.add_mode).pack(side="left", padx=2)
+        ttk.Button(btn_frame, text="删除模式", command=self.delete_mode).pack(side="left", padx=2)
+        ttk.Button(btn_frame, text="清空模式", command=self.clear_modes).pack(side="left", padx=2)
 
         # 计算模式选择
         calc_frame = ttk.LabelFrame(main_frame, text="计算模式", padding="10")
@@ -212,7 +222,10 @@ class PowerConsumeCalculator:
 
                 self.mode_table.item(item, values=new_values)
                 self.update_sleep_duration()  # 更新休眠时长
-            combo.destroy()
+                combo.destroy()
+
+                # ✅ 关键：更新休眠时长
+                self.update_sleep_duration()
 
         combo.bind("<<ComboboxSelected>>", on_select)
         combo.focus()
@@ -273,9 +286,13 @@ class PowerConsumeCalculator:
                 new_values[column_index] = value
                 self.mode_table.item(item, values=new_values)
                 entry.destroy()
+
+                # ✅ 关键：更新休眠时长
+                self.update_sleep_duration()
+
             except ValueError:
                 messagebox.showerror("错误", "请输入有效的数字")
-
+                entry.destroy()
         def cancel():
             entry.destroy()
 
@@ -323,9 +340,9 @@ class PowerConsumeCalculator:
     def add_example_data(self):
         """添加示例数据"""
         # 添加一些示例模式
-        self.mode_table.insert("", "end", values=("检测", "mA", "300", "s", "30.0", "48"))
-        self.mode_table.insert("", "end", values=("上传", "mA", "800", "s", "30.0", "1"))
-        self.mode_table.insert("", "end", values=("拍照+上传", "mA", "1000", "s", "60.0", "1"))
+        self.mode_table.insert("", "end", values=("检测", "mA", "30", "s", "30.0", "48"))
+        self.mode_table.insert("", "end", values=("上传", "mA", "40", "s", "20.0", "1"))
+        self.mode_table.insert("", "end", values=("拍照+上传", "mA", "100", "s", "60.0", "1"))
 
         # 添加休眠模式（最后）
         self.mode_table.insert("", "end", values=("休眠", "uA", "30", "s", "0", "1"))
@@ -404,25 +421,22 @@ class PowerConsumeCalculator:
                 duration_value = float(values[4])
                 times_per_day = int(values[5])
 
-                # 将电流转换为mA
+                # 转换为 mA
                 if current_unit == "uA":
-                    current_mah = current_value / 1000
-                else:  # mA
-                    current_mah = current_value
+                    current_ma = current_value / 1000
+                else:
+                    current_ma = current_value
 
-                # 将时长转换为秒
-                if duration_unit == "s":
-                    duration_sec = duration_value
-                elif duration_unit == "min":
-                    duration_sec = duration_value * 60
-                elif duration_unit == "h":
-                    duration_sec = duration_value * 3600
-                else:  # ms
-                    duration_sec = duration_value / 1000
+                # 转换为秒
+                seconds = convert_to_seconds(duration_value, duration_unit)
 
-                # 计算每种模式的功耗
-                power = current_mah * duration_sec
-                modes.append((mode_name, current_mah, duration_sec, power, times_per_day))
+                # 计算单次功耗（mWh）
+                energy_per_cycle_mwh = (current_ma * seconds * voltage) / 3600
+
+                # 每天总功耗（mWh）
+                daily_energy_mwh = energy_per_cycle_mwh * times_per_day
+
+                modes.append((mode_name, current_ma, seconds, energy_per_cycle_mwh, daily_energy_mwh))
 
             if not modes:
                 messagebox.showwarning("警告", "请至少添加一个工作模式")
@@ -431,50 +445,73 @@ class PowerConsumeCalculator:
             # 获取输入值
             input_value = float(self.input_var.get())
 
-            # 计算总功耗
-            total_power = sum(power * times_per_day for _, _, _, power, times_per_day in modes)
+            # 计算每日总功耗（mWh）
+            daily_total_energy = sum(daily_energy_mwh for _, _, _, _, daily_energy_mwh in modes)
 
             # 根据计算模式进行计算
             if self.calc_mode.get() == "续航时间":
-                # 计算续航时间 (小时)
+                # 计算续航时间
                 if capacity <= 0:
                     messagebox.showerror("错误", "电池容量不能为0或负数")
                     return
 
-                # 计算总运行时间 (小时)
-                total_time_hours = (capacity * 3600) / total_power
+                # 总能量（mWh）
+                total_energy_mwh = capacity * voltage
+
+                # 应用经验系数：实际可用能量减少
+                usable_energy_mwh = total_energy_mwh * float(self.experience_factor_var.get())
+
+                # 可使用天数
+                days = total_energy_mwh / daily_total_energy
+
+                # 转换为小时、年
+                hours = days * 24
+                years = days / 365.25
 
                 # 格式化结果
                 result = f"电池容量: {capacity:.2f} mAh\n"
-                result += f"总功耗: {total_power:.2f} mAh·s\n"
-                result += f"设备可使用时间: {total_time_hours:.2f} 小时\n\n"
+                result += f"电池电压: {voltage:.2f} V\n"
+                result += f"总能量: {total_energy_mwh:.2f} mWh\n"
+                result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
+                result += f"设备可使用时间: {hours:.2f} 小时 ({days:.2f} 天, {years:.2f} 年)\n\n"
                 result += "工作模式详情:\n"
 
-                for mode_name, current_mah, duration_sec, power, times_per_day in modes:
-                    result += f"  - {mode_name}: {current_mah:.2f} mA, {duration_sec:.2f} s, {power:.4f} mAh·s, 每天{times_per_day}次\n"
+                for mode_name, current_ma, seconds, energy_per_cycle_mwh, daily_energy_mwh in modes:
+                    result += f"  - {mode_name}: {current_ma:.2f} mA, {seconds:.2f} s, "
+                    result += f"{energy_per_cycle_mwh:.4f} mWh/次, 每天{times_per_day}次, "
+                    result += f"共{daily_energy_mwh:.4f} mWh\n"
 
-                # 显示结果
                 self.display_result(result)
 
             elif self.calc_mode.get() == "所需容量":
-                # 计算所需电池容量 (mAh)
+                # 计算所需电池容量
                 if input_value <= 0:
                     messagebox.showerror("错误", "输入值不能为0或负数")
                     return
 
-                # 计算所需容量
-                required_capacity = total_power / 3600
+                # 输入的是 ms，转换为秒
+                input_seconds = input_value / 1000
+
+                # 计算所需总能量（mWh）
+                required_energy_mwh = daily_total_energy * (input_seconds / 86400)  # 按比例缩放
+
+                # 考虑经验系数：需要更大的电池来补偿损耗
+                required_capacity = required_energy_mwh / (voltage * float(self.experience_factor_var.get()))
+
+                # 所需容量（mAh）
+                required_capacity = required_energy_mwh / voltage
 
                 # 格式化结果
                 result = f"输入续航时间: {input_value:.2f} ms\n"
-                result += f"总功耗: {total_power:.2f} mAh·s\n"
+                result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
                 result += f"所需电池容量: {required_capacity:.2f} mAh\n\n"
                 result += "工作模式详情:\n"
 
-                for mode_name, current_mah, duration_sec, power, times_per_day in modes:
-                    result += f"  - {mode_name}: {current_mah:.2f} mA, {duration_sec:.2f} s, {power:.4f} mAh·s, 每天{times_per_day}次\n"
+                for mode_name, current_ma, seconds, energy_per_cycle_mwh, daily_energy_mwh in modes:
+                    result += f"  - {mode_name}: {current_ma:.2f} mA, {seconds:.2f} s, "
+                    result += f"{energy_per_cycle_mwh:.4f} mWh/次, 每天{times_per_day}次, "
+                    result += f"共{daily_energy_mwh:.4f} mWh\n"
 
-                # 显示结果
                 self.display_result(result)
 
         except ValueError as e:
