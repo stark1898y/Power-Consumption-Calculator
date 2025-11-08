@@ -12,9 +12,12 @@ import json
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-from fpdf import FPDF
-import os
 import platform
+from fpdf import FPDF, YPos, XPos
+import os
+from datetime import datetime
+import sys
+
 
 import matplotlib.pyplot as plt
 
@@ -98,63 +101,24 @@ class PowerConsumeCalculator:
         battery_frame = ttk.LabelFrame(main_frame, text="电池信息", padding="10")
         battery_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
-        # 电池类型选择
+        # 第1行：电池类型、经验系数、老化模型
         ttk.Label(battery_frame, text="电池类型:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.battery_type_var = tk.StringVar(value="锂电池")
-        battery_types = ["锂电池", "一次性锂亚电池", "碱性干电池"]
         battery_combo = ttk.Combobox(
             battery_frame,
             textvariable=self.battery_type_var,
-            values=battery_types,
+            values=["锂电池", "一次性锂亚电池", "碱性干电池"],
             state="readonly",
             width=15
         )
         battery_combo.grid(row=0, column=1, padx=5, pady=5)
         battery_combo.bind("<<ComboboxSelected>>", self.on_battery_type_change)
 
-        # 经验系数
         ttk.Label(battery_frame, text="经验系数:").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.experience_factor_var = tk.StringVar(value="0.7")
         ttk.Entry(battery_frame, textvariable=self.experience_factor_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
-        # 串联/并联个数
-        ttk.Label(battery_frame, text="串联个数:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.series_count_var = tk.StringVar(value="1")
-        ttk.Entry(battery_frame, textvariable=self.series_count_var, width=5).grid(row=1, column=1, padx=5, pady=5)
-
-        ttk.Label(battery_frame, text="并联个数:").grid(row=1, column=2, sticky="w", padx=5, pady=5)
-        self.parallel_count_var = tk.StringVar(value="1")
-        ttk.Entry(battery_frame, textvariable=self.parallel_count_var, width=5).grid(row=1, column=3, padx=5, pady=5)
-
-        # 单节参数
-        ttk.Label(battery_frame, text="单节电压 (V):").grid(row=2, column=0, sticky="w", padx=5, pady=5)
-        self.cell_voltage_var = tk.StringVar(value="3.6")
-        ttk.Entry(battery_frame, textvariable=self.cell_voltage_var, width=10).grid(row=2, column=1, padx=5, pady=5)
-
-        ttk.Label(battery_frame, text="终止电压 (V):").grid(row=2, column=2, sticky="w", padx=5, pady=5)
-        self.end_voltage_var = tk.StringVar(value="3.0")
-        ttk.Entry(battery_frame, textvariable=self.end_voltage_var, width=10).grid(row=2, column=3, padx=5, pady=5)
-
-        ttk.Label(battery_frame, text="单节容量 (mAh):").grid(row=3, column=0, sticky="w", padx=5, pady=5)
-        ttk.Label(battery_frame, text="(从起始电压放电至终止电压的可用容量)").grid(row=4, column=0, sticky="w", padx=5, pady=0)
-        self.cell_capacity_var = tk.StringVar(value="19000")
-        ttk.Entry(battery_frame, textvariable=self.cell_capacity_var, width=10).grid(row=3, column=1, padx=5, pady=5)
-
-        # 总参数（只读）
-        ttk.Label(battery_frame, text="总电压 (V):").grid(row=3, column=2, sticky="w", padx=5, pady=5)
-        self.total_voltage_var = tk.StringVar(value="3.6")
-        ttk.Entry(battery_frame, textvariable=self.total_voltage_var, width=10, state="readonly").grid(row=3, column=3, padx=5, pady=5)
-
-        ttk.Label(battery_frame, text="总终止电压 (V):").grid(row=4, column=2, sticky="w", padx=5, pady=5)
-        self.total_end_voltage_var = tk.StringVar(value="3.0")
-        ttk.Entry(battery_frame, textvariable=self.total_end_voltage_var, width=10, state="readonly").grid(row=4, column=3, padx=5, pady=5)
-
-        ttk.Label(battery_frame, text="总容量 (mAh):").grid(row=4, column=0, sticky="w", padx=5, pady=5)
-        self.total_capacity_var = tk.StringVar(value="19000")
-        ttk.Entry(battery_frame, textvariable=self.total_capacity_var, width=10, state="readonly").grid(row=4, column=1, padx=5, pady=5)
-
-        # 电池老化模型设置
-        ttk.Label(battery_frame, text="老化模型:").grid(row=5, column=0, sticky="w", padx=5, pady=5)
+        ttk.Label(battery_frame, text="老化模型:").grid(row=0, column=4, sticky="w", padx=5, pady=5)
         self.aging_model_var = tk.StringVar(value="线性衰减")
         aging_models = [model["name"] for model in self.battery_aging_model.values()]
         aging_combo = ttk.Combobox(
@@ -164,8 +128,44 @@ class PowerConsumeCalculator:
             state="readonly",
             width=15
         )
-        aging_combo.grid(row=5, column=1, padx=5, pady=5)
+        aging_combo.grid(row=0, column=5, padx=5, pady=5)
         aging_combo.bind("<<ComboboxSelected>>", self.on_aging_model_change)
+
+        # 第2行：串联/并联
+        ttk.Label(battery_frame, text="串联个数:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.series_count_var = tk.StringVar(value="1")
+        ttk.Entry(battery_frame, textvariable=self.series_count_var, width=5).grid(row=1, column=1, padx=5, pady=5)
+
+        ttk.Label(battery_frame, text="并联个数:").grid(row=1, column=2, sticky="w", padx=5, pady=5)
+        self.parallel_count_var = tk.StringVar(value="1")
+        ttk.Entry(battery_frame, textvariable=self.parallel_count_var, width=5).grid(row=1, column=3, padx=5, pady=5)
+
+        # 第3行：单节参数
+        ttk.Label(battery_frame, text="单节电压 (V):").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        self.cell_voltage_var = tk.StringVar(value="3.6")
+        ttk.Entry(battery_frame, textvariable=self.cell_voltage_var, width=10).grid(row=2, column=1, padx=5, pady=5)
+
+        ttk.Label(battery_frame, text="终止电压 (V):").grid(row=2, column=2, sticky="w", padx=5, pady=5)
+        self.end_voltage_var = tk.StringVar(value="3.0")
+        ttk.Entry(battery_frame, textvariable=self.end_voltage_var, width=10).grid(row=2, column=3, padx=5, pady=5)
+
+        ttk.Label(battery_frame, text="单节容量 (mAh):").grid(row=2, column=4, sticky="w", padx=5, pady=5)
+        ttk.Label(battery_frame, text="(从起始电压放电至终止电压的可用容量)").grid(row=3, column=4, sticky="w", padx=5, pady=0)
+        self.cell_capacity_var = tk.StringVar(value="19000")
+        ttk.Entry(battery_frame, textvariable=self.cell_capacity_var, width=10).grid(row=2, column=5, padx=5, pady=5)
+
+        # 第4行：总参数（只读）
+        ttk.Label(battery_frame, text="总电压 (V):").grid(row=3, column=0, sticky="w", padx=5, pady=5)
+        self.total_voltage_var = tk.StringVar(value="3.6")
+        ttk.Entry(battery_frame, textvariable=self.total_voltage_var, width=10, state="readonly").grid(row=3, column=1, padx=5, pady=5)
+
+        ttk.Label(battery_frame, text="总终止电压 (V):").grid(row=3, column=2, sticky="w", padx=5, pady=5)
+        self.total_end_voltage_var = tk.StringVar(value="3.0")
+        ttk.Entry(battery_frame, textvariable=self.total_end_voltage_var, width=10, state="readonly").grid(row=3, column=3, padx=5, pady=5)
+
+        ttk.Label(battery_frame, text="总容量 (mAh):").grid(row=3, column=4, sticky="w", padx=5, pady=5)
+        self.total_capacity_var = tk.StringVar(value="19000")
+        ttk.Entry(battery_frame, textvariable=self.total_capacity_var, width=10, state="readonly").grid(row=3, column=5, padx=5, pady=5)
 
         # 绑定变化事件
         self.series_count_var.trace_add("write", self.update_total_values)
@@ -278,6 +278,18 @@ class PowerConsumeCalculator:
 
         # 初始化示例数据
         self.add_example_data()
+
+    def show_about(self):
+        """显示关于对话框"""
+        about_text = (
+            "PowerConsume 功耗计算器\n"
+            "版本: 1.0.0\n"
+            # "编译时间: 2025-04-05 10:30\n"
+            # 用 datetime.now() 动态获取编译时间，但通常建议写死或从构建脚本注入。
+            "作者: Yzy\n"
+            "功能: 电池续航与容量计算"
+        )
+        messagebox.showinfo("关于", about_text)
 
     def update_total_values(self, *args):
         """更新总电压、总容量和总终止电压"""
@@ -753,52 +765,162 @@ class PowerConsumeCalculator:
                 messagebox.showerror("错误", f"加载失败: {str(e)}")
 
     def export_pdf(self):
-        """导出结果为PDF文件"""
+        """导出计算结果为 PDF（完全支持中文，包含功耗分布图表）"""
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+        result_text = self.result_text.get(1.0, tk.END).strip()
+        if not result_text:
+            messagebox.showwarning("警告", "没有计算结果可导出")
+            return
+
+        modes = []
+        for item in self.mode_table.get_children():
+            values = self.mode_table.item(item, "values")
+            if len(values) >= 6:
+                modes.append(values)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        default_name = f"功耗计算结果_{timestamp}.pdf"
+        file_path = filedialog.asksaveasfilename(
+            initialfile=default_name,
+            defaultextension=".pdf",
+            filetypes=[("PDF文件", "*.pdf"), ("所有文件", "*.*")]
+        )
+        if not file_path:
+            return
+
         try:
-            # 检查是否有结果
-            result_text = self.result_text.get(1.0, tk.END).strip()
-            if not result_text:
-                messagebox.showwarning("警告", "没有结果可导出")
-                return
-
-            # 自动生成文件名：功耗计算结果_时间戳.pdf
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            default_name = f"功耗计算结果_{timestamp}.pdf"
-
-            file_path = filedialog.asksaveasfilename(
-                initialfile=default_name,
-                defaultextension=".pdf",
-                filetypes=[("PDF文件", "*.pdf"), ("所有文件", "*.*")]
-            )
-            if not file_path:
-                return
-
-            # 创建PDF对象
             pdf = FPDF()
             pdf.add_page()
 
-            font_path = get_chinese_font_path()
-            if font_path and os.path.exists(font_path):
-                # 添加字体，不再使用 uni 参数
-                pdf.add_font('SimHei', '', font_path)
+            # === 关键修复：使用支持中文的字体 ===
+            # 1. 优先尝试系统黑体（SimHei） - Windows 默认中文字体
+            chinese_font = 'simhei'
+            system_font_path = 'C:/Windows/Fonts/simhei.ttf'
 
-            # 设置标题字体（使用 SimHei，不加粗）
-            pdf.set_font('SimHei', '', 16)
-            pdf.cell(0, 10, 'PowerConsume 功耗计算结果', 0, 1, 'C')
-            pdf.ln(10)
+            # 2. 检查系统字体是否存在
+            if os.path.exists(system_font_path):
+                print(f"使用系统字体: {system_font_path}")
+                # ✅ 关键修复：同时注册常规字体和加粗字体
+                pdf.add_font(chinese_font, '', system_font_path)  # 常规字体
+                pdf.add_font(chinese_font, 'B', system_font_path)  # 加粗字体
+            else:
+                # 3. 如果系统字体不存在，尝试使用项目内字体
+                project_font_path = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "fonts",
+                    "simhei.ttf"
+                )
 
-            # 设置正文字体
-            pdf.set_font('SimHei', '', 12)
+                if os.path.exists(project_font_path):
+                    print(f"使用项目内字体: {project_font_path}")
+                    # ✅ 同时注册常规字体和加粗字体
+                    pdf.add_font(chinese_font, '', project_font_path)
+                    pdf.add_font(chinese_font, 'B', project_font_path)
+                else:
+                    # 4. 最后备选：使用系统宋体（SimSun）
+                    fallback_font_path = 'C:/Windows/Fonts/simsun.ttc'
+                    if os.path.exists(fallback_font_path):
+                        print(f"使用备选字体: {fallback_font_path}")
+                        # ✅ 同时注册常规字体和加粗字体
+                        pdf.add_font(chinese_font, '', fallback_font_path)
+                        pdf.add_font(chinese_font, 'B', fallback_font_path)
+                    else:
+                        # 5. 如果所有字体都失败，使用默认字体（不支持中文）
+                        print("警告：无法加载中文字体，将使用Helvetica")
+                        pdf.set_font('Helvetica', '', 12)
+                        raise Exception("无法加载中文字体，PDF可能无法显示中文")
+
+            # === 设置中文字体 ===
+            pdf.set_font(chinese_font, '', 12)  # 常规字体
+
+            # === 标题（加粗） ===
+            pdf.set_font(chinese_font, 'B', 16)
+            pdf.cell(0, 10, "PowerConsume 功耗计算结果", align="C", new_y=YPos.NEXT)
+            pdf.ln(8)
+
+            # === 原始结果文本（自动换行）===
+            pdf.set_font(chinese_font, '', 11)
             for line in result_text.split('\n'):
-                pdf.cell(0, 8, line, 0, 1)
+                if line.strip() == "":
+                    pdf.ln(4)
+                else:
+                    pdf.multi_cell(0, 6, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-            # 保存PDF文件
+            # === 工作模式表格 ===
+            if modes:
+                pdf.ln(10)
+                # 表格标题（加粗）
+                pdf.set_font(chinese_font, 'B', 12)
+                pdf.cell(0, 10, "工作模式详情", new_y=YPos.NEXT)
+                pdf.set_font(chinese_font, '', 10)
+
+                col_widths = [30, 25, 25, 25, 25, 25]
+                headers = ["模式", "电流值", "电流单位", "时长值", "时长单位", "每天次数"]
+
+                # 表头
+                for header, width in zip(headers, col_widths):
+                    pdf.cell(width, 10, header, border=1, align="C")
+                pdf.ln()
+
+                # 数据行
+                for mode in modes:
+                    pdf.cell(col_widths[0], 10, str(mode[0]), border=1, align="C")
+                    pdf.cell(col_widths[1], 10, str(mode[2]), border=1, align="C")
+                    pdf.cell(col_widths[2], 10, str(mode[1]), border=1, align="C")
+                    pdf.cell(col_widths[3], 10, str(mode[4]), border=1, align="C")
+                    pdf.cell(col_widths[4], 10, str(mode[3]), border=1, align="C")
+                    pdf.cell(col_widths[5], 10, str(mode[5]), border=1, align="C")
+                    pdf.ln()
+
+            # === 添加功耗分布图表 ===
+            # 1. 创建图表
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            # 2. 准备数据
+            mode_names = [mode[0] for mode in modes]
+            energy_values = [float(mode[4]) * float(mode[5]) for mode in modes]
+
+            # 3. 绘制柱状图
+            bars = ax.bar(mode_names, energy_values,
+                          color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
+
+            # 4. 添加数值标签
+            for bar, value in zip(bars, energy_values):
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(energy_values) * 0.01, f'{value:.2f}',
+                        ha='center', va='bottom', fontsize=8)
+
+            # 5. 设置图表属性
+            ax.set_xlabel('工作模式', fontsize=10)
+            ax.set_ylabel('每日能耗 (mWh)', fontsize=10)
+            ax.set_title('功耗分布图', fontsize=12)
+            ax.grid(axis='y', alpha=0.3)
+
+            # 6. 旋转x轴标签以避免重叠
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=9)
+
+            # 7. 调整布局
+            plt.tight_layout()
+
+            # 8. 保存图表为临时图片
+            chart_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"chart_{timestamp}.png")
+            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+
+            # 9. 添加图片到PDF
+            pdf.ln(10)
+            pdf.set_font(chinese_font, 'B', 12)
+            pdf.cell(0, 10, "功耗分布图", new_y=YPos.NEXT)
+            pdf.image(chart_path, x=10, y=None, w=180)
+
+            # 10. 清理临时图片
+            plt.close(fig)  # 关闭图表以释放内存
+            os.remove(chart_path)
+
             pdf.output(file_path)
-            messagebox.showinfo("成功", f"PDF已导出到:\n{file_path}")
+            messagebox.showinfo("成功", f"PDF 已成功导出至：\n{file_path}")
 
         except Exception as e:
-            messagebox.showerror("错误", f"导出PDF失败: {str(e)}")
+            messagebox.showerror("导出失败", f"生成 PDF 时出错：\n{str(e)}")
 
     def show_chart(self):
         """显示功耗分布图表"""
