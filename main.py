@@ -1,11 +1,16 @@
 # main.py
+"""
+PowerConsume 功耗计算器
+支持多种电池类型，计算设备续航时间或所需电池容量。
+"""
+
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import tkinter.simpledialog as simpledialog
 import math
 
 
-def convert_to_seconds(value, unit):
+def convert_to_seconds(value: float, unit: str) -> float:
     """将任意单位的时间转换为秒"""
     if unit == "ms":
         return value / 1000
@@ -19,7 +24,7 @@ def convert_to_seconds(value, unit):
         return value
 
 
-def convert_from_seconds(seconds, unit):
+def convert_from_seconds(seconds: float, unit: str) -> float:
     """将秒转换为指定单位"""
     if unit == "ms":
         return seconds * 1000
@@ -47,20 +52,26 @@ class PowerConsumeCalculator:
         battery_frame = ttk.LabelFrame(main_frame, text="电池信息", padding="10")
         battery_frame.pack(fill="x", pady=10)
 
-        # 第一行：电池类型 和 经验系数
+        # 电池类型选择
         ttk.Label(battery_frame, text="电池类型:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.battery_type_var = tk.StringVar(value="锂电池")
-        battery_type_combo = ttk.Combobox(battery_frame, textvariable=self.battery_type_var,
-                                        values=["锂电池", "一次性锂亚电池", "碱性干电池"],
-                                        state="readonly", width=15)
-        battery_type_combo.grid(row=0, column=1, padx=5, pady=5)
-        battery_type_combo.bind("<<ComboboxSelected>>", self.on_battery_type_change)
+        battery_types = ["锂电池", "一次性锂亚电池", "碱性干电池"]
+        battery_combo = ttk.Combobox(
+            battery_frame,
+            textvariable=self.battery_type_var,
+            values=battery_types,
+            state="readonly",
+            width=15
+        )
+        battery_combo.grid(row=0, column=1, padx=5, pady=5)
+        battery_combo.bind("<<ComboboxSelected>>", self.on_battery_type_change)
 
+        # 经验系数
         ttk.Label(battery_frame, text="经验系数:").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.experience_factor_var = tk.StringVar(value="0.7")
         ttk.Entry(battery_frame, textvariable=self.experience_factor_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
-        # 第二行：串联、并联个数
+        # 串联/并联个数
         ttk.Label(battery_frame, text="串联个数:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         self.series_count_var = tk.StringVar(value="1")
         ttk.Entry(battery_frame, textvariable=self.series_count_var, width=5).grid(row=1, column=1, padx=5, pady=5)
@@ -69,7 +80,7 @@ class PowerConsumeCalculator:
         self.parallel_count_var = tk.StringVar(value="1")
         ttk.Entry(battery_frame, textvariable=self.parallel_count_var, width=5).grid(row=1, column=3, padx=5, pady=5)
 
-        # 第三行：单节电压、终止电压、单节容量
+        # 单节参数
         ttk.Label(battery_frame, text="单节电压 (V):").grid(row=2, column=0, sticky="w", padx=5, pady=5)
         self.cell_voltage_var = tk.StringVar(value="3.6")
         ttk.Entry(battery_frame, textvariable=self.cell_voltage_var, width=10).grid(row=2, column=1, padx=5, pady=5)
@@ -79,15 +90,15 @@ class PowerConsumeCalculator:
         ttk.Entry(battery_frame, textvariable=self.end_voltage_var, width=10).grid(row=2, column=3, padx=5, pady=5)
 
         ttk.Label(battery_frame, text="单节容量 (mAh):").grid(row=3, column=0, sticky="w", padx=5, pady=5)
+        ttk.Label(battery_frame, text="(从起始电压放电至终止电压的可用容量)").grid(row=4, column=0, sticky="w", padx=5, pady=0)
         self.cell_capacity_var = tk.StringVar(value="19000")
         ttk.Entry(battery_frame, textvariable=self.cell_capacity_var, width=10).grid(row=3, column=1, padx=5, pady=5)
 
-        # 总电压和总容量（只读）
+        # 总参数（只读）
         ttk.Label(battery_frame, text="总电压 (V):").grid(row=3, column=2, sticky="w", padx=5, pady=5)
         self.total_voltage_var = tk.StringVar(value="3.6")
         ttk.Entry(battery_frame, textvariable=self.total_voltage_var, width=10, state="readonly").grid(row=3, column=3, padx=5, pady=5)
 
-        # 新增：总终止电压
         ttk.Label(battery_frame, text="总终止电压 (V):").grid(row=4, column=2, sticky="w", padx=5, pady=5)
         self.total_end_voltage_var = tk.StringVar(value="3.0")
         ttk.Entry(battery_frame, textvariable=self.total_end_voltage_var, width=10, state="readonly").grid(row=4, column=3, padx=5, pady=5)
@@ -106,16 +117,17 @@ class PowerConsumeCalculator:
         mode_frame = ttk.LabelFrame(main_frame, text="工作模式设置", padding="5")
         mode_frame.pack(fill="x", pady=10)
 
-        # 表格容器
         table_container = ttk.Frame(mode_frame)
         table_container.pack(fill="x", pady=2)
         table_container.pack_propagate(False)
         table_container.configure(height=120)
 
-        self.mode_table = ttk.Treeview(table_container,
-                                       columns=("mode", "current_unit", "current_value", "duration_unit",
-                                                "duration_value", "times_per_day"), show="headings",
-                                                height=5)
+        self.mode_table = ttk.Treeview(
+            table_container,
+            columns=("mode", "current_unit", "current_value", "duration_unit", "duration_value", "times_per_day"),
+            show="headings",
+            height=5
+        )
         self.mode_table.heading("mode", text="模式")
         self.mode_table.column("mode", width=70, anchor="center")
 
@@ -152,14 +164,8 @@ class PowerConsumeCalculator:
         calc_frame.pack(fill="x", pady=10)
 
         self.calc_mode = tk.StringVar(value="续航时间")
-        ttk.Radiobutton(calc_frame, text="计算续航时间", variable=self.calc_mode, value="续航时间").grid(row=0,
-                                                                                                         column=0,
-                                                                                                         sticky="w",
-                                                                                                         padx=5)
-        ttk.Radiobutton(calc_frame, text="计算所需容量", variable=self.calc_mode, value="所需容量").grid(row=0,
-                                                                                                         column=1,
-                                                                                                         sticky="w",
-                                                                                                         padx=5)
+        ttk.Radiobutton(calc_frame, text="计算续航时间", variable=self.calc_mode, value="续航时间").grid(row=0, column=0, sticky="w", padx=5)
+        ttk.Radiobutton(calc_frame, text="计算所需容量", variable=self.calc_mode, value="所需容量").grid(row=0, column=1, sticky="w", padx=5)
 
         # ==================== 输入区域 ====================
         calc_area = ttk.Frame(main_frame)
@@ -169,7 +175,6 @@ class PowerConsumeCalculator:
         self.input_var = tk.StringVar(value="5000")
         ttk.Entry(calc_area, textvariable=self.input_var, width=10).grid(row=0, column=1, padx=5)
 
-        # 单位选择下拉框
         ttk.Label(calc_area, text="单位:").grid(row=0, column=2, sticky="w", padx=5)
         self.unit_var = tk.StringVar(value="天")
         unit_combo = ttk.Combobox(calc_area, textvariable=self.unit_var, values=["天", "h", "min"], width=5, state="readonly")
@@ -177,7 +182,6 @@ class PowerConsumeCalculator:
 
         ttk.Label(calc_area, text="(续航时间) 或 mAh (容量)").grid(row=0, column=4, sticky="w", padx=5)
 
-        # 计算按钮放在同一行，靠右对齐
         ttk.Button(calc_area, text="计算", command=self.calculate).grid(row=0, column=5, padx=10, sticky="e")
 
         # ==================== 结果展示 ====================
@@ -189,7 +193,7 @@ class PowerConsumeCalculator:
             wrap=tk.WORD,
             font=("Arial", 10),
             width=120,
-            height=18,  # 加大高度
+            height=18,
             bg="white",
             relief="solid",
             padx=5,
@@ -202,7 +206,7 @@ class PowerConsumeCalculator:
         self.add_example_data()
 
     def update_total_values(self, *args):
-        """更新总电压和总容量"""
+        """更新总电压、总容量和总终止电压"""
         try:
             series = int(self.series_count_var.get())
             parallel = int(self.parallel_count_var.get())
@@ -212,7 +216,7 @@ class PowerConsumeCalculator:
 
             total_voltage = cell_voltage * series
             total_capacity = cell_capacity * parallel
-            total_end_voltage = end_voltage * series  # 串联时终止电压也叠加
+            total_end_voltage = end_voltage * series
 
             self.total_voltage_var.set(f"{total_voltage:.2f}")
             self.total_capacity_var.set(f"{total_capacity:.2f}")
@@ -222,7 +226,7 @@ class PowerConsumeCalculator:
             pass  # 忽略无效输入
 
     def on_battery_type_change(self, event=None):
-        """根据电池类型设置默认参数"""
+        """根据电池类型自动填充默认参数"""
         battery_type = self.battery_type_var.get()
         default_settings = {
             "锂电池": {"voltage": 3.6, "end_voltage": 3.0, "capacity": 19000, "series": 1, "parallel": 1},
@@ -237,17 +241,15 @@ class PowerConsumeCalculator:
             self.cell_capacity_var.set(str(setting["capacity"]))
             self.series_count_var.set(str(setting["series"]))
             self.parallel_count_var.set(str(setting["parallel"]))
-
-            # 更新总电压和容量
             self.update_total_values()
 
     def setup_double_click_edit(self):
-        """双击编辑功能"""
+        """双击编辑表格内容"""
         self.mode_table.bind("<Double-1>", self.on_double_click)
         self.mode_table.bind("<Button-1>", self.on_click)
 
     def on_click(self, event):
-        """点击列弹出下拉菜单"""
+        """点击列弹出单位下拉菜单"""
         col = self.mode_table.identify_column(event.x)
         item = self.mode_table.identify_row(event.y)
         if not item or col not in ("#2", "#4"):
@@ -330,14 +332,15 @@ class PowerConsumeCalculator:
         entry.focus()
 
     def add_mode(self):
+        """添加一个新工作模式"""
         item_id = self.mode_table.insert("", "end",
-                                         values=("模式" + str(len(self.mode_table.get_children()) + 1), "mA", "0", "s",
-                                                 "0", "1"))
+                                         values=("模式" + str(len(self.mode_table.get_children()) + 1), "mA", "0", "s", "0", "1"))
         self.mode_table.selection_set(item_id)
         self.mode_table.focus(item_id)
         self.update_sleep_duration()
 
     def delete_mode(self):
+        """删除选中的工作模式"""
         selected_items = self.mode_table.selection()
         if not selected_items:
             messagebox.showwarning("警告", "请先选择要删除的工作模式")
@@ -347,10 +350,12 @@ class PowerConsumeCalculator:
         self.update_sleep_duration()
 
     def clear_modes(self):
+        """清空所有工作模式"""
         self.mode_table.delete(*self.mode_table.get_children())
         self.update_sleep_duration()
 
     def add_example_data(self):
+        """初始化示例数据"""
         self.mode_table.insert("", "end", values=("检测", "mA", "30", "s", "30.0", "48"))
         self.mode_table.insert("", "end", values=("上传", "mA", "40", "s", "20.0", "1"))
         self.mode_table.insert("", "end", values=("拍照+上传", "mA", "100", "s", "60.0", "1"))
@@ -358,6 +363,7 @@ class PowerConsumeCalculator:
         self.update_sleep_duration()
 
     def update_sleep_duration(self):
+        """自动计算并更新休眠时间"""
         total_active_time = 0
         sleep_item = None
         total_time_per_day = 24 * 3600
@@ -388,22 +394,21 @@ class PowerConsumeCalculator:
             self.mode_table.item(sleep_item, values=new_values)
 
     def calculate(self):
+        """执行功耗计算"""
         try:
-            # 获取电池信息
             series = int(self.series_count_var.get())
             parallel = int(self.parallel_count_var.get())
             cell_voltage = float(self.cell_voltage_var.get())
-            end_voltage = float(self.end_voltage_var.get())  # ✅ 获取终止电压
+            end_voltage = float(self.end_voltage_var.get())
             cell_capacity = float(self.cell_capacity_var.get())
             experience_factor = float(self.experience_factor_var.get())
 
             total_voltage = cell_voltage * series
             total_capacity = cell_capacity * parallel
-            average_voltage = (total_voltage + end_voltage * series) / 2  # ✅ 平均电压（串联后）
+            average_voltage = (total_voltage + end_voltage * series) / 2
 
             if total_voltage <= 0 or end_voltage <= 0 or total_capacity <= 0:
                 raise ValueError("电池参数必须为正数")
-
             if not (0 < experience_factor <= 1):
                 raise ValueError("经验系数应在0到1之间")
 
@@ -421,8 +426,7 @@ class PowerConsumeCalculator:
                     raise ValueError("输入值必须为正数")
                 self._calculate_battery_life(
                     total_voltage, total_capacity, experience_factor,
-                    daily_total_energy, modes, input_value, unit,
-                    end_voltage  # ✅ 显式传入
+                    daily_total_energy, modes, input_value, unit, end_voltage
                 )
             elif self.calc_mode.get() == "所需容量":
                 input_value = float(self.input_var.get())
@@ -430,14 +434,14 @@ class PowerConsumeCalculator:
                     raise ValueError("输入值必须为正数")
                 self._calculate_required_capacity(
                     input_value, total_voltage, experience_factor,
-                    daily_total_energy, modes,
-                    end_voltage  # ✅ 显式传入
+                    daily_total_energy, modes, end_voltage
                 )
 
         except Exception as e:
             messagebox.showerror("错误", f"计算失败: {str(e)}")
 
     def _get_mode_data(self, voltage):
+        """解析工作模式数据"""
         modes = []
         for item in self.mode_table.get_children():
             values = self.mode_table.item(item, "values")
@@ -464,18 +468,17 @@ class PowerConsumeCalculator:
                     'energy_per_cycle_mwh': energy_per_cycle_mwh,
                     'daily_energy_mwh': daily_energy_mwh
                 })
-            except:
+            except Exception as e:
+                print(f"解析模式失败: {e}")
                 continue
         return modes
 
     def _calculate_battery_life(self, voltage, capacity, experience_factor,
-                            daily_total_energy, modes, input_ms, unit, end_voltage):
-        # 转换输入值为秒
+                                daily_total_energy, modes, input_ms, unit, end_voltage):
+        """计算电池续航时间"""
         input_seconds = convert_to_seconds(input_ms, unit)
-
-        # ✅ 使用平均电压计算总能量
-        average_voltage = (voltage + end_voltage) / 2  # ✅ 正确计算平均电压
-        total_energy_mwh = capacity * average_voltage  # 实际可用电能
+        average_voltage = (voltage + end_voltage) / 2
+        total_energy_mwh = capacity * average_voltage
         usable_energy_mwh = total_energy_mwh * experience_factor
         days = usable_energy_mwh / daily_total_energy
         hours = days * 24
@@ -497,9 +500,9 @@ class PowerConsumeCalculator:
 
     def _calculate_required_capacity(self, input_ms, voltage, experience_factor,
                                     daily_total_energy, modes, end_voltage):
-        input_seconds = input_ms / 1000
+        """计算所需电池容量"""
+        input_seconds = convert_to_seconds(input_ms, "s")  # 转换为秒
         required_energy_mwh = daily_total_energy * (input_seconds / 86400)
-        # ✅ 使用平均电压反推所需容量
         average_voltage = (voltage + end_voltage) / 2
         required_capacity = required_energy_mwh / (average_voltage * experience_factor)
 
@@ -515,6 +518,7 @@ class PowerConsumeCalculator:
         self.display_result(result)
 
     def display_result(self, result):
+        """显示计算结果"""
         self.result_text.configure(state="normal")
         self.result_text.delete(1.0, tk.END)
         self.result_text.insert(tk.END, result)
