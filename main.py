@@ -5,10 +5,32 @@ PowerConsume 功耗计算器
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, scrolledtext, filedialog
 import tkinter.simpledialog as simpledialog
 import math
+import json
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+from fpdf import FPDF
+import os
+import platform
 
+import matplotlib.pyplot as plt
+
+# 全局设置中文字体
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS']
+plt.rcParams['axes.unicode_minus'] = False
+
+def get_chinese_font_path():
+    system = platform.system().lower()
+    if system == "windows":
+        return r"C:\Windows\Fonts\simhei.ttf"
+    elif system == "darwin":  # macOS
+        return "/System/Library/Fonts/PingFang.ttc"
+    else:  # Linux
+        return "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+    return None
 
 def convert_to_seconds(value: float, unit: str) -> float:
     """将任意单位的时间转换为秒"""
@@ -42,15 +64,39 @@ class PowerConsumeCalculator:
     def __init__(self, root):
         self.root = root
         self.root.title("PowerConsume 功耗计算器")
-        self.root.geometry("950x800")
+        # self.root.geometry("1200x800")
+        self.root.geometry("1400x900")  # 从 1200x800 增大到 1400x900
         self.root.configure(bg="#f0f0f0")
 
+        # 初始化电池老化模型参数
+        self.battery_aging_model = {
+            "linear": {"name": "线性衰减", "params": {"rate": 0.02}},
+            "exponential": {"name": "指数衰减", "params": {"rate": 0.05}},
+            "step": {"name": "阶跃衰减", "params": {"threshold": 0.8, "drop": 0.1}}
+        }
+        self.selected_aging_model = "linear"
+
+        # 初始化放电曲线参数
+        self.discharge_curve = {
+            "model": "linear",
+            "custom_points": [(0, 1.0), (0.5, 0.9), (1.0, 0.8)]
+        }
+
+        # 创建主框架并设置 grid 权重
         main_frame = ttk.Frame(root, padding="20")
         main_frame.pack(fill="both", expand=True)
+        main_frame.columnconfigure(0, weight=1)
+
+        # 设置行权重：让结果区域获得更多空间
+        for i in range(9):  # 总共9行
+            if i == 8:  # 最后一行（结果区域）权重最大
+                main_frame.rowconfigure(i, weight=3)
+            else:
+                main_frame.rowconfigure(i, weight=0)
 
         # ==================== 电池信息区域 ====================
         battery_frame = ttk.LabelFrame(main_frame, text="电池信息", padding="10")
-        battery_frame.pack(fill="x", pady=10)
+        battery_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
         # 电池类型选择
         ttk.Label(battery_frame, text="电池类型:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
@@ -107,6 +153,20 @@ class PowerConsumeCalculator:
         self.total_capacity_var = tk.StringVar(value="19000")
         ttk.Entry(battery_frame, textvariable=self.total_capacity_var, width=10, state="readonly").grid(row=4, column=1, padx=5, pady=5)
 
+        # 电池老化模型设置
+        ttk.Label(battery_frame, text="老化模型:").grid(row=5, column=0, sticky="w", padx=5, pady=5)
+        self.aging_model_var = tk.StringVar(value="线性衰减")
+        aging_models = [model["name"] for model in self.battery_aging_model.values()]
+        aging_combo = ttk.Combobox(
+            battery_frame,
+            textvariable=self.aging_model_var,
+            values=aging_models,
+            state="readonly",
+            width=15
+        )
+        aging_combo.grid(row=5, column=1, padx=5, pady=5)
+        aging_combo.bind("<<ComboboxSelected>>", self.on_aging_model_change)
+
         # 绑定变化事件
         self.series_count_var.trace_add("write", self.update_total_values)
         self.parallel_count_var.trace_add("write", self.update_total_values)
@@ -115,7 +175,7 @@ class PowerConsumeCalculator:
 
         # ==================== 工作模式设置 ====================
         mode_frame = ttk.LabelFrame(main_frame, text="工作模式设置", padding="5")
-        mode_frame.pack(fill="x", pady=10)
+        mode_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
 
         table_container = ttk.Frame(mode_frame)
         table_container.pack(fill="x", pady=2)
@@ -161,7 +221,7 @@ class PowerConsumeCalculator:
 
         # ==================== 计算模式选择 ====================
         calc_frame = ttk.LabelFrame(main_frame, text="计算模式", padding="10")
-        calc_frame.pack(fill="x", pady=10)
+        calc_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
         self.calc_mode = tk.StringVar(value="续航时间")
         ttk.Radiobutton(calc_frame, text="计算续航时间", variable=self.calc_mode, value="续航时间").grid(row=0, column=0, sticky="w", padx=5)
@@ -169,7 +229,7 @@ class PowerConsumeCalculator:
 
         # ==================== 输入区域 ====================
         calc_area = ttk.Frame(main_frame)
-        calc_area.pack(fill="x", pady=10)
+        calc_area.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
 
         ttk.Label(calc_area, text="输入:").grid(row=0, column=0, sticky="e", padx=5)
         self.input_var = tk.StringVar(value="5000")
@@ -184,23 +244,37 @@ class PowerConsumeCalculator:
 
         ttk.Button(calc_area, text="计算", command=self.calculate).grid(row=0, column=5, padx=10, sticky="e")
 
+        # ==================== 操作按钮 ====================
+        action_frame = ttk.Frame(main_frame)
+        action_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+
+        ttk.Button(action_frame, text="导出结果", command=self.export_result).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="保存配置", command=self.save_config).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="加载配置", command=self.load_config).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="导出PDF", command=self.export_pdf).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="显示图表", command=self.show_chart).pack(side="left", padx=5)
+
         # ==================== 结果展示 ====================
         result_frame = ttk.LabelFrame(main_frame, text="计算结果", padding="10")
-        result_frame.pack(fill="both", expand=True, pady=10)
+        result_frame.grid(row=8, column=0, sticky="nsew", padx=5, pady=5)
+        result_frame.columnconfigure(0, weight=1)
+        result_frame.rowconfigure(0, weight=1)
 
         self.result_text = scrolledtext.ScrolledText(
             result_frame,
             wrap=tk.WORD,
-            font=("Arial", 10),
-            width=120,
-            height=18,
+            font=("Arial", 11),
+            width=180,
+            height=35,
             bg="white",
             relief="solid",
-            padx=5,
-            pady=5
+            padx=10,
+            pady=10
         )
-        self.result_text.pack(fill="both", expand=True)
+        self.result_text.grid(row=0, column=0, sticky="nsew")
         self.result_text.configure(state="disabled")
+        # self.result_text.pack(fill="both", expand=True)
+        # self.result_text.configure(state="disabled")
 
         # 初始化示例数据
         self.add_example_data()
@@ -242,6 +316,14 @@ class PowerConsumeCalculator:
             self.series_count_var.set(str(setting["series"]))
             self.parallel_count_var.set(str(setting["parallel"]))
             self.update_total_values()
+
+    def on_aging_model_change(self, event=None):
+        """根据选择的老化模型更新内部状态"""
+        selected_name = self.aging_model_var.get()
+        for key, model in self.battery_aging_model.items():
+            if model["name"] == selected_name:
+                self.selected_aging_model = key
+                break
 
     def setup_double_click_edit(self):
         """双击编辑表格内容"""
@@ -497,6 +579,20 @@ class PowerConsumeCalculator:
             result += f"{mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n"
 
         self.display_result(result)
+        self.last_calculation_result = {
+            "type": "battery_life",
+            "voltage": voltage,
+            "capacity": capacity,
+            "average_voltage": average_voltage,
+            "total_energy_mwh": total_energy_mwh,
+            "usable_energy_mwh": usable_energy_mwh,
+            "experience_factor": experience_factor,
+            "daily_total_energy": daily_total_energy,
+            "days": days,
+            "hours": hours,
+            "years": years,
+            "modes": modes
+        }
 
     def _calculate_required_capacity(self, input_ms, voltage, experience_factor,
                                     daily_total_energy, modes, end_voltage):
@@ -516,6 +612,18 @@ class PowerConsumeCalculator:
             result += f"{mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n"
 
         self.display_result(result)
+        self.last_calculation_result = {
+            "type": "required_capacity",
+            "input_ms": input_ms,
+            "input_seconds": input_seconds,
+            "voltage": voltage,
+            "average_voltage": average_voltage,
+            "experience_factor": experience_factor,
+            "daily_total_energy": daily_total_energy,
+            "required_energy_mwh": required_energy_mwh,
+            "required_capacity": required_capacity,
+            "modes": modes
+        }
 
     def display_result(self, result):
         """显示计算结果"""
@@ -523,6 +631,249 @@ class PowerConsumeCalculator:
         self.result_text.delete(1.0, tk.END)
         self.result_text.insert(tk.END, result)
         self.result_text.configure(state="disabled")
+
+    def export_result(self):
+        """导出计算结果到文本文件"""
+        result_text = self.result_text.get(1.0, tk.END)
+        if not result_text.strip():
+            messagebox.showwarning("警告", "没有结果可导出")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(result_text)
+                messagebox.showinfo("成功", f"结果已导出到:\n{file_path}")
+            except Exception as e:
+                messagebox.showerror("错误", f"导出失败: {str(e)}")
+
+    def save_config(self):
+        """保存当前配置到JSON文件"""
+        config = {
+            "battery_info": {
+                "type": self.battery_type_var.get(),
+                "experience_factor": self.experience_factor_var.get(),
+                "series_count": self.series_count_var.get(),
+                "parallel_count": self.parallel_count_var.get(),
+                "cell_voltage": self.cell_voltage_var.get(),
+                "end_voltage": self.end_voltage_var.get(),
+                "cell_capacity": self.cell_capacity_var.get()
+            },
+            "aging_model": self.selected_aging_model,
+            "discharge_curve": self.discharge_curve,
+            "calc_mode": self.calc_mode.get(),
+            "input_value": self.input_var.get(),
+            "input_unit": self.unit_var.get(),
+            "modes": []
+        }
+
+        # 保存工作模式
+        for item in self.mode_table.get_children():
+            values = self.mode_table.item(item, "values")
+            if len(values) >= 6:
+                config["modes"].append({
+                    "mode": values[0],
+                    "current_unit": values[1],
+                    "current_value": values[2],
+                    "duration_unit": values[3],
+                    "duration_value": values[4],
+                    "times_per_day": values[5]
+                })
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, ensure_ascii=False, indent=4)
+                messagebox.showinfo("成功", f"配置已保存到:\n{file_path}")
+            except Exception as e:
+                messagebox.showerror("错误", f"保存失败: {str(e)}")
+
+    def load_config(self):
+        """从JSON文件加载配置"""
+        file_path = filedialog.askopenfilename(
+            filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+
+                # 加载电池信息
+                battery_info = config.get("battery_info", {})
+                self.battery_type_var.set(battery_info.get("type", "锂电池"))
+                self.experience_factor_var.set(battery_info.get("experience_factor", "0.7"))
+                self.series_count_var.set(battery_info.get("series_count", "1"))
+                self.parallel_count_var.set(battery_info.get("parallel_count", "1"))
+                self.cell_voltage_var.set(battery_info.get("cell_voltage", "3.6"))
+                self.end_voltage_var.set(battery_info.get("end_voltage", "3.0"))
+                self.cell_capacity_var.set(battery_info.get("cell_capacity", "19000"))
+
+                # 更新总值
+                self.update_total_values()
+
+                # 加载老化模型
+                self.selected_aging_model = config.get("aging_model", "linear")
+                aging_model_name = self.battery_aging_model[self.selected_aging_model]["name"]
+                self.aging_model_var.set(aging_model_name)
+
+                # 加载放电曲线
+                self.discharge_curve = config.get("discharge_curve", {
+                    "model": "linear",
+                    "custom_points": [(0, 1.0), (0.5, 0.9), (1.0, 0.8)]
+                })
+
+                # 加载计算模式
+                self.calc_mode.set(config.get("calc_mode", "续航时间"))
+                self.input_var.set(config.get("input_value", "5000"))
+                self.unit_var.set(config.get("input_unit", "天"))
+
+                # 加载工作模式
+                self.mode_table.delete(*self.mode_table.get_children())
+                modes = config.get("modes", [])
+                for mode in modes:
+                    self.mode_table.insert("", "end", values=(
+                        mode.get("mode", ""),
+                        mode.get("current_unit", "mA"),
+                        mode.get("current_value", "0"),
+                        mode.get("duration_unit", "s"),
+                        mode.get("duration_value", "0"),
+                        mode.get("times_per_day", "1")
+                    ))
+
+                messagebox.showinfo("成功", "配置已加载")
+            except Exception as e:
+                messagebox.showerror("错误", f"加载失败: {str(e)}")
+
+    def export_pdf(self):
+        """导出结果为PDF文件"""
+        try:
+            # 检查是否有结果
+            result_text = self.result_text.get(1.0, tk.END).strip()
+            if not result_text:
+                messagebox.showwarning("警告", "没有结果可导出")
+                return
+
+            # 自动生成文件名：功耗计算结果_时间戳.pdf
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            default_name = f"功耗计算结果_{timestamp}.pdf"
+
+            file_path = filedialog.asksaveasfilename(
+                initialfile=default_name,
+                defaultextension=".pdf",
+                filetypes=[("PDF文件", "*.pdf"), ("所有文件", "*.*")]
+            )
+            if not file_path:
+                return
+
+            # 创建PDF对象
+            pdf = FPDF()
+            pdf.add_page()
+
+            font_path = get_chinese_font_path()
+            if font_path and os.path.exists(font_path):
+                # 添加字体，不再使用 uni 参数
+                pdf.add_font('SimHei', '', font_path)
+
+            # 设置标题字体（使用 SimHei，不加粗）
+            pdf.set_font('SimHei', '', 16)
+            pdf.cell(0, 10, 'PowerConsume 功耗计算结果', 0, 1, 'C')
+            pdf.ln(10)
+
+            # 设置正文字体
+            pdf.set_font('SimHei', '', 12)
+            for line in result_text.split('\n'):
+                pdf.cell(0, 8, line, 0, 1)
+
+            # 保存PDF文件
+            pdf.output(file_path)
+            messagebox.showinfo("成功", f"PDF已导出到:\n{file_path}")
+
+        except Exception as e:
+            messagebox.showerror("错误", f"导出PDF失败: {str(e)}")
+
+    def show_chart(self):
+        """显示功耗分布图表"""
+        try:
+            # 获取当前工作模式数据
+            modes = []
+            for item in self.mode_table.get_children():
+                values = self.mode_table.item(item, "values")
+                if len(values) >= 6:
+                    modes.append({
+                        'name': values[0],
+                        'daily_energy': float(values[4]) * float(values[5])  # 简化的能耗计算
+                    })
+
+            if not modes:
+                messagebox.showwarning("警告", "没有工作模式数据可显示")
+                return
+
+            # 创建新窗口显示图表
+            chart_window = tk.Toplevel(self.root)
+            chart_window.title("功耗分布图表")
+            chart_window.geometry("800x600")
+
+            # 创建matplotlib图表
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            # 准备数据
+            mode_names = [mode['name'] for mode in modes]
+            energy_values = [mode['daily_energy'] for mode in modes]
+
+            # 绘制柱状图
+            bars = ax.bar(mode_names, energy_values, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
+
+            # 添加数值标签
+            for bar, value in zip(bars, energy_values):
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(energy_values)*0.01,
+                       f'{value:.2f}', ha='center', va='bottom')
+
+            # 设置图表属性
+            ax.set_xlabel('工作模式')
+            ax.set_ylabel('每日能耗 (mWh)')
+            ax.set_title('功耗分布图')
+            ax.grid(axis='y', alpha=0.3)
+
+            # 旋转x轴标签以避免重叠
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+            # 调整布局
+            plt.tight_layout()
+
+            # 在Tkinter窗口中显示图表
+            canvas = FigureCanvasTkAgg(fig, chart_window)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            # 添加保存按钮
+            button_frame = ttk.Frame(chart_window)
+            button_frame.pack(fill=tk.X, pady=5)
+
+            def save_chart():
+                file_path = filedialog.asksaveasfilename(
+                    defaultextension=".png",
+                    filetypes=[("PNG文件", "*.png"), ("JPEG文件", "*.jpg"), ("所有文件", "*.*")]
+                )
+                if file_path:
+                    try:
+                        fig.savefig(file_path, dpi=300, bbox_inches='tight')
+                        messagebox.showinfo("成功", f"图表已保存到:\n{file_path}")
+                    except Exception as e:
+                        messagebox.showerror("错误", f"保存失败: {str(e)}")
+
+            ttk.Button(button_frame, text="保存图表", command=save_chart).pack(side=tk.RIGHT, padx=10)
+
+        except Exception as e:
+            messagebox.showerror("错误", f"显示图表失败: {str(e)}")
 
 
 if __name__ == "__main__":
