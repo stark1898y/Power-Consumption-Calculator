@@ -149,8 +149,7 @@ class PowerConsumeCalculator:
         self.end_voltage_var = tk.StringVar(value="3.0")
         ttk.Entry(battery_frame, textvariable=self.end_voltage_var, width=10).grid(row=2, column=3, padx=5, pady=5)
 
-        ttk.Label(battery_frame, text="单节容量 (mAh):").grid(row=2, column=4, sticky="w", padx=5, pady=5)
-        ttk.Label(battery_frame, text="(从起始电压放电至终止电压的可用容量)").grid(row=3, column=4, sticky="w", padx=5, pady=0)
+        ttk.Label(battery_frame, text="单节容量 (mAh)(从起始电压放电至终止电压的可用容量):").grid(row=2, column=4, sticky="w", padx=5, pady=5)
         self.cell_capacity_var = tk.StringVar(value="19000")
         ttk.Entry(battery_frame, textvariable=self.cell_capacity_var, width=10).grid(row=2, column=5, padx=5, pady=5)
 
@@ -923,79 +922,42 @@ class PowerConsumeCalculator:
             messagebox.showerror("导出失败", f"生成 PDF 时出错：\n{str(e)}")
 
     def show_chart(self):
-        """显示功耗分布图表"""
-        try:
-            # 获取当前工作模式数据
-            modes = []
-            for item in self.mode_table.get_children():
-                values = self.mode_table.item(item, "values")
-                if len(values) >= 6:
-                    modes.append({
-                        'name': values[0],
-                        'daily_energy': float(values[4]) * float(values[5])  # 简化的能耗计算
-                    })
+        """显示功耗分布图"""
+        if not hasattr(self, 'last_calculation_result'):
+            messagebox.showwarning("警告", "请先执行计算")
+            return
 
-            if not modes:
-                messagebox.showwarning("警告", "没有工作模式数据可显示")
-                return
+        result = self.last_calculation_result
+        modes = result['modes']
+        names = [mode['name'] for mode in modes]
+        daily_energy_mwh = [mode['daily_energy_mwh'] for mode in modes]
 
-            # 创建新窗口显示图表
-            chart_window = tk.Toplevel(self.root)
-            chart_window.title("功耗分布图表")
-            chart_window.geometry("800x600")
+        # 创建图表
+        fig, ax = plt.subplots(figsize=(10, 6))
+        bars = ax.bar(names, daily_energy_mwh, color=['red', 'blue', 'green', 'orange'], alpha=0.7)
 
-            # 创建matplotlib图表
-            fig, ax = plt.subplots(figsize=(10, 6))
+        # 添加数值标签
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.annotate(f'{height:.2f}',
+                        xy=(bar.get_x() + bar.get_width()/2, height),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords='offset points',
+                        ha='center', va='bottom')
 
-            # 准备数据
-            mode_names = [mode['name'] for mode in modes]
-            energy_values = [mode['daily_energy'] for mode in modes]
+        ax.set_xlabel('工作模式')
+        ax.set_ylabel('每日能耗 (mWh)')
+        ax.set_title('功耗分布图')
+        ax.grid(axis='y', alpha=0.3)
 
-            # 绘制柱状图
-            bars = ax.bar(mode_names, energy_values, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
+        # 显示图表
+        chart_window = tk.Toplevel(self.root)
+        chart_window.title("功耗分布图")
+        chart_window.geometry("800x600")
 
-            # 添加数值标签
-            for bar, value in zip(bars, energy_values):
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(energy_values)*0.01,
-                       f'{value:.2f}', ha='center', va='bottom')
-
-            # 设置图表属性
-            ax.set_xlabel('工作模式')
-            ax.set_ylabel('每日能耗 (mWh)')
-            ax.set_title('功耗分布图')
-            ax.grid(axis='y', alpha=0.3)
-
-            # 旋转x轴标签以避免重叠
-            plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-
-            # 调整布局
-            plt.tight_layout()
-
-            # 在Tkinter窗口中显示图表
-            canvas = FigureCanvasTkAgg(fig, chart_window)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-            # 添加保存按钮
-            button_frame = ttk.Frame(chart_window)
-            button_frame.pack(fill=tk.X, pady=5)
-
-            def save_chart():
-                file_path = filedialog.asksaveasfilename(
-                    defaultextension=".png",
-                    filetypes=[("PNG文件", "*.png"), ("JPEG文件", "*.jpg"), ("所有文件", "*.*")]
-                )
-                if file_path:
-                    try:
-                        fig.savefig(file_path, dpi=300, bbox_inches='tight')
-                        messagebox.showinfo("成功", f"图表已保存到:\n{file_path}")
-                    except Exception as e:
-                        messagebox.showerror("错误", f"保存失败: {str(e)}")
-
-            ttk.Button(button_frame, text="保存图表", command=save_chart).pack(side=tk.RIGHT, padx=10)
-
-        except Exception as e:
-            messagebox.showerror("错误", f"显示图表失败: {str(e)}")
+        canvas = FigureCanvasTkAgg(fig, chart_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
 
 
 if __name__ == "__main__":
