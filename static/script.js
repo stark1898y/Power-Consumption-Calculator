@@ -143,6 +143,8 @@ function calculate() {
     .then(response => response.json())
     .then(result => {
         displayResult(result);
+        // 计算完成后自动显示图表
+        showChart(); // ← 添加这行
     })
     .catch(error => {
         console.error('Error:', error);
@@ -262,7 +264,17 @@ function displayResult(result) {
 }
 
 function showChart() {
-    // 先调用 calculate 获取完整数据（包括 daily_energy_mwh）
+    const container = document.getElementById("chart-container");
+    const button = document.querySelector('button[onclick="showChart()"]');
+
+    // 如果已有图表，则隐藏并修改按钮文字
+    if (container.innerHTML.includes('data:image')) {
+        container.innerHTML = '';
+        button.textContent = '显示图表';
+        return;
+    }
+
+    // 否则调用接口生成图表
     const data = collectData();
 
     fetch('/calculate', {
@@ -274,7 +286,6 @@ function showChart() {
     })
     .then(response => response.json())
     .then(result => {
-        // 然后将带有 daily_energy_mwh 的 modes 发送给 chart 接口
         return fetch('/chart', {
             method: 'POST',
             headers: {
@@ -286,7 +297,8 @@ function showChart() {
     .then(response => response.json())
     .then(result => {
         const imgData = result.image;
-        document.getElementById("chart-container").innerHTML = `<img src="data:image/png;base64,${imgData}" style="max-width:100%; height:auto;" />`;
+        container.innerHTML = `<img src="data:image/png;base64,${imgData}" style="max-width:100%; height:auto;" />`;
+        button.textContent = '隐藏图表';
     })
     .catch(error => {
         console.error('Error:', error);

@@ -6,26 +6,58 @@ import io
 import matplotlib
 matplotlib.use('Agg')  # 非交互式后端
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import os
 
 app = Flask(__name__, static_folder='static')
 
-# 修改 web_app.py 中的 generate_chart 函数
+# 检查系统并设置合适的字体
+def setup_chinese_font():
+    """设置中文字体支持"""
+    # 尝试加载常见中文字体
+    font_names = [
+        'WenQuanYi Zen Hei',
+        'WenQuanYi Micro Hei',
+        'Noto Sans CJK SC',
+        'SimHei',
+        'Microsoft YaHei'
+    ]
+
+    # 检查系统中是否存在这些字体
+    available_fonts = []
+    for name in font_names:
+        try:
+            # 查找字体文件
+            font_prop = fm.FontProperties(family=name)
+            available_fonts.append(name)
+        except:
+            continue
+
+    if available_fonts:
+        plt.rcParams['font.sans-serif'] = available_fonts
+    else:
+        plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS']
+
+    plt.rcParams['axes.unicode_minus'] = False
+
+# 在应用启动时设置字体
+setup_chinese_font()
+
 @app.route('/chart', methods=['POST'])
 def generate_chart():
     data = request.json
     modes = data.get('modes', [])
 
-    # 修复：使用 'name' 键而不是 'mode' 键
+    # 使用 'name' 键而不是 'mode' 键
     names = [mode['name'] for mode in modes]
     energies = [mode['daily_energy_mwh'] for mode in modes]
 
-    # 设置中文字体支持
-    plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示为方框的问题
-
     # 创建图表
     fig, ax = plt.subplots(figsize=(10, 6))
-    bars = ax.bar(names, energies, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
+
+    # 设置颜色
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD']
+    bars = ax.bar(names, energies, color=colors[:len(names)])
 
     # 添加数值标签
     for bar in bars:
@@ -36,10 +68,14 @@ def generate_chart():
                     textcoords="offset points",
                     ha='center', va='bottom')
 
-    ax.set_xlabel('工作模式')
-    ax.set_ylabel('每日能耗 (mWh)')
-    ax.set_title('功耗分布图')
+    # 设置坐标轴标签和标题
+    ax.set_xlabel('工作模式', fontsize=12)
+    ax.set_ylabel('每日能耗 (mWh)', fontsize=12)
+    ax.set_title('功耗分布图', fontsize=14)
     ax.grid(axis='y', alpha=0.3)
+
+    # 调整布局避免裁剪
+    plt.tight_layout()
 
     # 保存为内存中的字节流
     img_buffer = io.BytesIO()
@@ -50,34 +86,7 @@ def generate_chart():
 
     return jsonify({'image': img_base64})
 
-# 保留核心计算函数
-def convert_to_seconds(value: float, unit: str) -> float:
-    """将任意单位的时间转换为秒"""
-    if unit == "ms":
-        return value / 1000
-    elif unit == "min":
-        return value * 60
-    elif unit == "h":
-        return value * 3600
-    elif unit == "天":
-        return value * 24 * 3600
-    else:  # s
-        return value
-
-def convert_from_seconds(seconds: float, unit: str) -> float:
-    """将秒转换为指定单位"""
-    if unit == "ms":
-        return seconds * 1000
-    elif unit == "min":
-        return seconds / 60
-    elif unit == "h":
-        return seconds / 3600
-    elif unit == "天":
-        return seconds / (24 * 3600)
-    else:  # s
-        return seconds
-
-# 移植核心计算逻辑
+# 修改后的计算函数
 @app.route('/calculate', methods=['POST'])
 def calculate():
     data = request.json
@@ -170,6 +179,32 @@ def calculate():
         }
 
     return jsonify(result)
+
+def convert_to_seconds(value: float, unit: str) -> float:
+    """将任意单位的时间转换为秒"""
+    if unit == "ms":
+        return value / 1000
+    elif unit == "min":
+        return value * 60
+    elif unit == "h":
+        return value * 3600
+    elif unit == "天":
+        return value * 24 * 3600
+    else:  # s
+        return value
+
+def convert_from_seconds(seconds: float, unit: str) -> float:
+    """将秒转换为指定单位"""
+    if unit == "ms":
+        return seconds * 1000
+    elif unit == "min":
+        return seconds / 60
+    elif unit == "h":
+        return seconds / 3600
+    elif unit == "天":
+        return seconds / (24 * 3600)
+    else:  # s
+        return seconds
 
 @app.route('/')
 def index():
@@ -372,7 +407,7 @@ def index():
                 <button onclick="calculate()">计算</button>
                 <button onclick="showChart()">显示图表</button>
                 <div id="chart-container" style="margin-top: 20px;"></div>
-            # </div>
+            </div>
             <div id="result"></div>
         </div>
 
