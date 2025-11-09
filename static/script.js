@@ -2,7 +2,7 @@
  * @Author       : stark1898y 1658608470@qq.com
  * @Date         : 2025-11-09 23:02:54
  * @LastEditors  : stark1898y 1658608470@qq.com
- * @LastEditTime : 2025-11-09 23:02:55
+ * @LastEditTime : 2025-11-09 23:13:41
  * @FilePath     : \Power Consumption Calculator\static\script.js
  * @Description  :
  *
@@ -262,14 +262,26 @@ function displayResult(result) {
 }
 
 function showChart() {
+    // 先调用 calculate 获取完整数据（包括 daily_energy_mwh）
     const data = collectData();
 
-    fetch('/chart', {
+    fetch('/calculate', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         },
         body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        // 然后将带有 daily_energy_mwh 的 modes 发送给 chart 接口
+        return fetch('/chart', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ modes: result.modes })
+        });
     })
     .then(response => response.json())
     .then(result => {

@@ -7,17 +7,16 @@ import matplotlib
 matplotlib.use('Agg')  # 非交互式后端
 import matplotlib.pyplot as plt
 
-# app = Flask(__name__)
 app = Flask(__name__, static_folder='static')
 
-# 添加一个新路由 /chart，用于生成图表并返回图片 URL
+# 修改 web_app.py 中的 generate_chart 函数
 @app.route('/chart', methods=['POST'])
 def generate_chart():
     data = request.json
     modes = data.get('modes', [])
 
-    # 准备数据（注意字段名要匹配前端）
-    names = [mode['mode'] for mode in modes]
+    # 修复：使用 'name' 键而不是 'mode' 键
+    names = [mode['name'] for mode in modes]
     energies = [mode['daily_energy_mwh'] for mode in modes]
 
     # 创建图表
