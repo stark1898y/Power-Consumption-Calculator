@@ -2,7 +2,7 @@
  * @Author       : stark1898y 1658608470@qq.com
  * @Date         : 2025-11-09 23:02:54
  * @LastEditors  : stark1898y 1658608470@qq.com
- * @LastEditTime : 2025-11-09 23:13:41
+ * @LastEditTime : 2025-11-09 23:23:27
  * @FilePath     : \Power Consumption Calculator\static\script.js
  * @Description  :
  *
