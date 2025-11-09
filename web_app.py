@@ -1,8 +1,51 @@
 # app.py
 from flask import Flask, request, jsonify
 import math
+import base64
+import io
+import matplotlib
+matplotlib.use('Agg')  # 非交互式后端
+import matplotlib.pyplot as plt
 
-app = Flask(__name__)
+# app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
+
+# 添加一个新路由 /chart，用于生成图表并返回图片 URL
+@app.route('/chart', methods=['POST'])
+def generate_chart():
+    data = request.json
+    modes = data.get('modes', [])
+
+    # 准备数据（注意字段名要匹配前端）
+    names = [mode['mode'] for mode in modes]
+    energies = [mode['daily_energy_mwh'] for mode in modes]
+
+    # 创建图表
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars = ax.bar(names, energies, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
+
+    # 添加数值标签
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(f'{height:.2f}',
+                    xy=(bar.get_x() + bar.get_width()/2, height),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+
+    ax.set_xlabel('工作模式')
+    ax.set_ylabel('每日能耗 (mWh)')
+    ax.set_title('功耗分布图')
+    ax.grid(axis='y', alpha=0.3)
+
+    # 保存为内存中的字节流
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+    img_buffer.seek(0)
+    img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    plt.close(fig)
+
+    return jsonify({'image': img_base64})
 
 # 保留核心计算函数
 def convert_to_seconds(value: float, unit: str) -> float:
@@ -156,7 +199,7 @@ def index():
                 <label>电池类型:</label>
                 <select id="battery_type" onchange="updateBatteryDefaults(this.value)">
                     <option value="锂电池">锂电池</option>
-                    <option value="一次性锂亚电池">一次性锂亚电池</option>
+                    <option value="一次性锂亚电池" selected>一次性锂亚电池</option>
                     <option value="碱性干电池">碱性干电池</option>
                 </select>
 
@@ -324,260 +367,14 @@ def index():
                 </select>
 
                 <button onclick="calculate()">计算</button>
-            </div>
-
+                <button onclick="showChart()">显示图表</button>
+                <div id="chart-container" style="margin-top: 20px;"></div>
+            # </div>
             <div id="result"></div>
         </div>
 
-        <script>
-            function addModeRow() {
-                const table = document.getElementById("modes_table").getElementsByTagName('tbody')[0];
-                const newRow = table.insertRow();
-
-                newRow.innerHTML = `
-                    <td><input type="text" value="模式" class="mode_name"></td>
-                    <td>
-                        <select class="current_unit">
-                            <option value="uA">uA</option>
-                            <option value="mA" selected>mA</option>
-                        </select>
-                    </td>
-                    <td><input type="number" value="0" class="current_value"></td>
-                    <td>
-                        <select class="duration_unit">
-                            <option value="ms">ms</option>
-                            <option value="s" selected>s</option>
-                            <option value="min">min</option>
-                            <option value="h">h</option>
-                            <option value="天">天</option>
-                        </select>
-                    </td>
-                    <td><input type="number" value="0" class="duration_value"></td>
-                    <td><input type="number" value="1" class="times_per_day"></td>
-                    <td><button onclick="deleteRow(this)">删除</button></td>
-                `;
-            }
-
-            // 更新总容量
-            function updateTotalCapacity() {
-                const parallel = parseFloat(document.getElementById("parallel_count").value) || 1;
-                const capacity = parseFloat(document.getElementById("cell_capacity").value) || 0;
-                const total = parallel * capacity;
-                document.getElementById("total_capacity").value = total.toFixed(0);
-            }
-
-            // 更新总电压
-            function updateTotalVoltage() {
-                const series = parseFloat(document.getElementById("series_count").value) || 1;
-                const voltage = parseFloat(document.getElementById("cell_voltage").value) || 0;
-                const total = series * voltage;
-                document.getElementById("total_voltage").value = total.toFixed(2);
-            }
-
-            // 更新总终止电压
-            function updateTotalEndVoltage() {
-                const series = parseFloat(document.getElementById("series_count").value) || 1;
-                const endVoltage = parseFloat(document.getElementById("end_voltage").value) || 0;
-                const total = series * endVoltage;
-                document.getElementById("total_end_voltage").value = total.toFixed(2);
-            }
-
-            // 绑定事件
-            document.getElementById("parallel_count").addEventListener("input", updateTotalCapacity);
-            document.getElementById("cell_capacity").addEventListener("input", updateTotalCapacity);
-            document.getElementById("series_count").addEventListener("input", updateTotalVoltage);
-            document.getElementById("series_count").addEventListener("input", updateTotalEndVoltage);
-            document.getElementById("cell_voltage").addEventListener("input", updateTotalVoltage);
-            document.getElementById("end_voltage").addEventListener("input", updateTotalEndVoltage);
-
-            // 页面加载时初始化
-            updateTotalCapacity();
-            updateTotalVoltage();
-            updateTotalEndVoltage();
-
-            // 在 JavaScript 中添加电池类型切换逻辑
-            function updateBatteryDefaults(type) {
-                const defaults = {
-                    "锂电池": { voltage: 3.6, endVoltage: 3.0, capacity: 19000, series: 1, parallel: 1 },
-                    "一次性锂亚电池": { voltage: 3.6, endVoltage: 2.0, capacity: 19000, series: 1, parallel: 2 },
-                    "碱性干电池": { voltage: 1.5, endVoltage: 1.0, capacity: 2700, series: 2, parallel: 1 }
-                };
-
-                const def = defaults[type];
-                document.getElementById("cell_voltage").value = def.voltage;
-                document.getElementById("end_voltage").value = def.endVoltage;
-                document.getElementById("cell_capacity").value = def.capacity;
-                document.getElementById("series_count").value = def.series;
-                document.getElementById("parallel_count").value = def.parallel;
-            }
-
-            function deleteRow(button) {
-                const row = button.parentNode.parentNode;
-                row.parentNode.removeChild(row);
-            }
-
-            function collectData() {
-                const modes = [];
-                const rows = document.getElementById("modes_table").getElementsByTagName('tbody')[0].rows;
-
-                for (let i = 0; i < rows.length; i++) {
-                    const cells = rows[i].cells;
-                    modes.push({
-                        mode: cells[0].getElementsByTagName('input')[0].value,
-                        current_unit: cells[1].getElementsByTagName('select')[0].value,
-                        current_value: cells[2].getElementsByTagName('input')[0].value,
-                        duration_unit: cells[3].getElementsByTagName('select')[0].value,
-                        duration_value: cells[4].getElementsByTagName('input')[0].value,
-                        times_per_day: cells[5].getElementsByTagName('input')[0].value
-                    });
-                }
-
-                return {
-                    battery_type: document.getElementById("battery_type").value,
-                    experience_factor: document.getElementById("experience_factor").value,
-                    series_count: document.getElementById("series_count").value,
-                    parallel_count: document.getElementById("parallel_count").value,
-                    cell_voltage: document.getElementById("cell_voltage").value,
-                    end_voltage: document.getElementById("end_voltage").value,
-                    cell_capacity: document.getElementById("cell_capacity").value,
-                    modes: modes,
-                    calc_mode: document.querySelector('input[name="calc_mode"]:checked').value,
-                    input_value: document.getElementById("input_value").value,
-                    input_unit: document.getElementById("input_unit").value
-                };
-            }
-
-            function calculate() {
-                const data = collectData();
-
-                fetch('/calculate', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                })
-                .then(response => response.json())
-                .then(result => {
-                    displayResult(result);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById("result").innerHTML = "<p style='color: red;'>计算出错: " + error + "</p>";
-                });
-            }
-
-            // 自动计算休眠时长
-            function calculateSleepDuration() {
-                const rows = document.getElementById("modes_table").getElementsByTagName('tbody')[0].rows;
-                let totalActiveTimeSeconds = 0;
-
-                // 遍历所有行，计算非休眠模式的总活跃时间
-                for (let i = 0; i < rows.length; i++) {
-                    const cells = rows[i].cells;
-                    const modeName = cells[0].getElementsByTagName('input')[0].value;
-                    if (modeName === "休眠") continue;
-
-                    const currentUnit = cells[1].getElementsByTagName('select')[0].value;
-                    const currentValue = parseFloat(cells[2].getElementsByTagName('input')[0].value);
-                    const durationUnit = cells[3].getElementsByTagName('select')[0].value;
-                    const durationValue = parseFloat(cells[4].getElementsByTagName('input')[0].value);
-                    const timesPerDay = parseInt(cells[5].getElementsByTagName('input')[0].value);
-
-                    // 转换为秒
-                    let seconds = durationValue;
-                    if (durationUnit === "ms") seconds /= 1000;
-                    else if (durationUnit === "min") seconds *= 60;
-                    else if (durationUnit === "h") seconds *= 3600;
-                    else if (durationUnit === "天") seconds *= 24 * 3600;
-
-                    totalActiveTimeSeconds += seconds * timesPerDay;
-                }
-
-                // 找到休眠行
-                let sleepRow = null;
-                for (let i = 0; i < rows.length; i++) {
-                    const modeName = rows[i].cells[0].getElementsByTagName('input')[0].value;
-                    if (modeName === "休眠") {
-                        sleepRow = rows[i];
-                        break;
-                    }
-                }
-
-                if (!sleepRow) return;
-
-                // 计算休眠时间（秒）
-                const sleepDurationSeconds = Math.max(0, 24 * 3600 - totalActiveTimeSeconds);
-
-                // 获取休眠的时长单位
-                const sleepDurationUnit = sleepRow.cells[3].getElementsByTagName('select')[0].value;
-
-                // 转换为对应单位
-                let sleepDurationValue = sleepDurationSeconds;
-                if (sleepDurationUnit === "ms") sleepDurationValue *= 1000;
-                else if (sleepDurationUnit === "min") sleepDurationValue /= 60;
-                else if (sleepDurationUnit === "h") sleepDurationValue /= 3600;
-                else if (sleepDurationUnit === "天") sleepDurationValue /= (24 * 3600);
-
-                // 更新输入框
-                sleepRow.cells[4].getElementsByTagName('input')[0].value = sleepDurationValue.toFixed(2);
-            }
-
-            // 绑定事件：当任何模式修改后，重新计算休眠时间
-            document.addEventListener('input', function(e) {
-                if (e.target.classList.contains('current_value') ||
-                    e.target.classList.contains('duration_value') ||
-                    e.target.classList.contains('times_per_day')) {
-                    calculateSleepDuration();
-                }
-            });
-
-            // 页面加载完成后初始化一次
-            window.onload = function() {
-                calculateSleepDuration();
-            };
-
-            function displayResult(result) {
-                let html = "<h3>计算结果</h3>";
-
-                if (result.type === "battery_life") {
-                    html += `
-                        <p>总电压: ${result.voltage.toFixed(2)} V</p>
-                        <p>总容量: ${result.capacity.toFixed(2)} mAh</p>
-                        <p>平均电压: ${result.average_voltage.toFixed(2)} V</p>
-                        <p>总能量: ${result.total_energy_mwh.toFixed(2)} mWh</p>
-                        <p>可用能量: ${result.usable_energy_mwh.toFixed(2)} mWh (×${result.experience_factor})</p>
-                        <p>每日功耗: ${result.daily_total_energy.toFixed(4)} mWh</p>
-                        <p>可使用时间: ${result.hours.toFixed(2)} 小时 (${result.days.toFixed(2)} 天, ${result.years.toFixed(2)} 年)</p>
-                        <h4>工作模式详情:</h4>
-                        <ul>
-                    `;
-
-                    result.modes.forEach(mode => {
-                        html += `<li>${mode.name}: ${mode.current_ma.toFixed(2)} mA, ${mode.seconds.toFixed(2)} s, ${mode.daily_energy_mwh.toFixed(4)} mWh/天</li>`;
-                    });
-
-                    html += "</ul>";
-                } else {
-                    html += `
-                        <p>目标续航: ${result.input_value} ${result.input_unit} (${result.input_seconds.toFixed(2)} 秒)</p>
-                        <p>每日功耗: ${result.daily_total_energy.toFixed(4)} mWh</p>
-                        <p>所需容量: ${result.required_capacity.toFixed(2)} mAh</p>
-                        <p>(考虑了 ${result.experience_factor} 的经验系数和平均电压)</p>
-                        <h4>工作模式详情:</h4>
-                        <ul>
-                    `;
-
-                    result.modes.forEach(mode => {
-                        html += `<li>${mode.name}: ${mode.current_ma.toFixed(2)} mA, ${mode.seconds.toFixed(2)} s, ${mode.daily_energy_mwh.toFixed(4)} mWh/天</li>`;
-                    });
-
-                    html += "</ul>";
-                }
-
-                document.getElementById("result").innerHTML = html;
-            }
-        </script>
+        <!-- 引入外部 JS -->
+        <script src="/static/script.js"></script>
     </body>
     </html>
     '''
