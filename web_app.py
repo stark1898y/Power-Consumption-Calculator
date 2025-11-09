@@ -19,6 +19,10 @@ def generate_chart():
     names = [mode['name'] for mode in modes]
     energies = [mode['daily_energy_mwh'] for mode in modes]
 
+    # 设置中文字体支持
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
+    plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示为方框的问题
+
     # 创建图表
     fig, ax = plt.subplots(figsize=(10, 6))
     bars = ax.bar(names, energies, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
