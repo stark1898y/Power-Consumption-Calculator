@@ -959,8 +959,14 @@ class PowerConsumeCalculator:
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
 
+def on_closing():
+    # 执行清理操作
+    print("程序正在退出...")
+    root.destroy()  # 销毁窗口
+    sys.exit()      # 退出程序
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = PowerConsumeCalculator(root)
+    root.protocol("WM_DELETE_WINDOW", on_closing)  # 绑定关闭事件
     root.mainloop()
