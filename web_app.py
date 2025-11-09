@@ -8,40 +8,96 @@ matplotlib.use('Agg')  # 非交互式后端
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
+import platform
 
 app = Flask(__name__, static_folder='static')
 
 # 检查系统并设置合适的字体
 def setup_chinese_font():
-    """设置中文字体支持"""
-    # 尝试加载常见中文字体
-    font_names = [
-        'WenQuanYi Zen Hei',
-        'WenQuanYi Micro Hei',
-        'Noto Sans CJK SC',
-        'SimHei',
-        'Microsoft YaHei'
-    ]
+    """设置中文字体支持 - 使用字体文件路径"""
+    system = platform.system()
 
-    # 检查系统中是否存在这些字体
-    available_fonts = []
-    for name in font_names:
-        try:
-            # 查找字体文件
-            font_prop = fm.FontProperties(family=name)
-            available_fonts.append(name)
-        except:
-            continue
+    if system == "Linux":
+        # Linux 系统，尝试使用字体文件路径
+        font_files = [
+            '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        ]
 
-    if available_fonts:
-        plt.rcParams['font.sans-serif'] = available_fonts
+        for font_file in font_files:
+            if os.path.exists(font_file):
+                # 直接使用字体文件
+                plt.rcParams['font.sans-serif'] = [font_file]
+                plt.rcParams['font.family'] = 'sans-serif'
+                print(f"Using font file: {font_file}")
+                break
+        else:
+            # 如果没有找到字体文件，使用字体名称
+            plt.rcParams['font.sans-serif'] = [
+                'WenQuanYi Zen Hei',
+                'WenQuanYi Micro Hei',
+                'Noto Sans CJK SC',
+                'DejaVu Sans'
+            ]
+            print("Using font names")
+
+    elif system == "Windows":
+        # Windows 系统使用系统中文字体
+        plt.rcParams['font.sans-serif'] = [
+            'SimHei',           # 黑体
+            'Microsoft YaHei',  # 微软雅黑
+            'SimSun',           # 宋体
+            'FangSong',         # 仿宋
+            'KaiTi'             # 楷体
+        ]
     else:
-        plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS']
+        # 其他系统
+        plt.rcParams['font.sans-serif'] = [
+            'Arial Unicode MS',
+            'Noto Sans CJK SC',
+            'DejaVu Sans'
+        ]
 
+    # 解决负号显示问题
     plt.rcParams['axes.unicode_minus'] = False
+
+    print(f"System: {system}")
+    print(f"Font settings: {plt.rcParams['font.sans-serif']}")
+    plt.rcParams['axes.unicode_minus'] = False
+
+    print(f"System: {system}")
+    print(f"Font settings: {plt.rcParams['font.sans-serif']}")
+
+    # 验证字体是否可用
+    if system == "Linux":
+        print("Available Chinese fonts:")
+        for font in fm.fontManager.ttflist:
+            if any(name in font.name.lower() for name in ['wenquan', 'noto', 'wqy']):
+                print(f"  - {font.name}: {font.fname}")
 
 # 在应用启动时设置字体
 setup_chinese_font()
+
+@app.route('/test_chinese')
+def test_chinese():
+    """测试中文字体"""
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # 测试中文显示
+    ax.text(0.5, 0.5, '中文测试', fontsize=20, ha='center', va='center')
+    ax.set_xlabel('横轴标签')
+    ax.set_ylabel('纵轴标签')
+    ax.set_title('图表标题测试')
+
+    # 保存图像
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', dpi=100, bbox_inches='tight')
+    img_buffer.seek(0)
+    img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    plt.close(fig)
+
+    return f'<img src="data:image/png;base64,{img_base64}" />'
 
 @app.route('/chart', methods=['POST'])
 def generate_chart():
