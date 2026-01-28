@@ -212,11 +212,16 @@ class PowerConsumeCalculator:
 
         self.setup_double_click_edit()
 
-        btn_frame = ttk.Frame(mode_frame)
-        btn_frame.pack(fill="x", pady=2)
-        ttk.Button(btn_frame, text="添加模式", command=self.add_mode).pack(side="left", padx=2)
-        ttk.Button(btn_frame, text="删除模式", command=self.delete_mode).pack(side="left", padx=2)
-        ttk.Button(btn_frame, text="清空模式", command=self.clear_modes).pack(side="left", padx=2)
+        # ==================== 操作按钮 ====================
+        action_frame = ttk.Frame(main_frame)
+        action_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+
+        ttk.Button(action_frame, text="清空结果", command=self.clear_results).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="导出结果", command=self.export_result).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="保存配置", command=self.save_config).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="加载配置", command=self.load_config).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="导出PDF", command=self.export_pdf).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="显示图表", command=self.show_chart).pack(side="left", padx=5)
 
         # ==================== 计算模式选择 ====================
         calc_frame = ttk.LabelFrame(main_frame, text="计算模式", padding="10")
@@ -243,15 +248,15 @@ class PowerConsumeCalculator:
 
         ttk.Button(calc_area, text="计算", command=self.calculate).grid(row=0, column=5, padx=10, sticky="e")
 
-        # ==================== 操作按钮 ====================
-        action_frame = ttk.Frame(main_frame)
-        action_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+        # # ==================== 操作按钮 ====================
+        # action_frame = ttk.Frame(main_frame)
+        # action_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
 
-        ttk.Button(action_frame, text="导出结果", command=self.export_result).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="保存配置", command=self.save_config).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="加载配置", command=self.load_config).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="导出PDF", command=self.export_pdf).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="显示图表", command=self.show_chart).pack(side="left", padx=5)
+        # ttk.Button(action_frame, text="导出结果", command=self.export_result).pack(side="left", padx=5)
+        # ttk.Button(action_frame, text="保存配置", command=self.save_config).pack(side="left", padx=5)
+        # ttk.Button(action_frame, text="加载配置", command=self.load_config).pack(side="left", padx=5)
+        # ttk.Button(action_frame, text="导出PDF", command=self.export_pdf).pack(side="left", padx=5)
+        # ttk.Button(action_frame, text="显示图表", command=self.show_chart).pack(side="left", padx=5)
 
         # ==================== 结果展示 ====================
         result_frame = ttk.LabelFrame(main_frame, text="计算结果", padding="10")
@@ -642,6 +647,14 @@ class PowerConsumeCalculator:
         self.result_text.delete(1.0, tk.END)
         self.result_text.insert(tk.END, result)
         self.result_text.configure(state="disabled")
+    def clear_results(self):
+        """清空计算结果"""
+        self.result_text.configure(state="normal")
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.configure(state="disabled")
+        # 清空最后的计算结果存储
+        if hasattr(self, 'last_calculation_result'):
+            delattr(self, 'last_calculation_result')
 
     def export_result(self):
         """导出计算结果到文本文件"""
