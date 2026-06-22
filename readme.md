@@ -17,7 +17,7 @@
 
 ## 在线演示
 
-**GitHub Pages**：[点击访问在线计算器](https://stark1898y.github.io/Power-Consumption-Calculator/)
+**GitHub Pages**：[点击访问在线计算器](https://stark1898y.github.io/power-consumption-calculator/)
 
 ## 项目结构
 
@@ -38,11 +38,11 @@ power-consumption-calculator/
 
 ## 版本说明
 
-| 版本 | 文件 | 技术栈 | 运行方式 |
-|------|------|--------|----------|
-| **桌面版** | `main.py` | Python + Tkinter | 运行 `python main.py` 或打包 exe |
-| **网页版** | `web_app.py` | Python + Flask + JS | 运行 `python web_app.py`，访问 `localhost:5000` |
-| **纯前端版** | `docs/index.html` | HTML + JavaScript + Chart.js | 直接打开 HTML 文件或部署到 GitHub Pages |
+| 版本               | 文件                | 技术栈                       | 运行方式                                            |
+| ------------------ | ------------------- | ---------------------------- | --------------------------------------------------- |
+| **桌面版**   | `main.py`         | Python + Tkinter             | 运行 `python main.py` 或打包 exe                  |
+| **网页版**   | `web_app.py`      | Python + Flask + JS          | 运行 `python web_app.py`，访问 `localhost:5000` |
+| **纯前端版** | `docs/index.html` | HTML + JavaScript + Chart.js | 直接打开 HTML 文件或部署到 GitHub Pages             |
 
 ## 快速开始
 
@@ -74,7 +74,7 @@ python web_app.py
 
 1. Fork 本仓库
 2. 在仓库 Settings → Pages → Source 选择 `main` 分支的 `/docs` 文件夹
-3. 访问 `https://你的用户名.github.io/Power-Consumption-Calculator/`
+3. 访问 `https://你的用户名.github.io/power-consumption-calculator/`
 
 ## 计算公式
 
@@ -109,7 +109,3 @@ python web_app.py
 ## 许可证
 
 本项目采用 [MIT 许可证](LICENSE)。
-
----
-
-**作者**：stark1898y (yzy)
