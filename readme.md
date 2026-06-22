@@ -17,7 +17,7 @@
 
 ## 在线演示
 
-**GitHub Pages**：[点击访问在线计算器](https://stark1898y.github.io/power-consumption-calculator/)
+**GitHub Pages**：[点击访问在线计算器](https://stark1898y.github.io/Power-Consumption-Calculator/)
 
 ## 项目结构
 
@@ -74,7 +74,7 @@ python web_app.py
 
 1. Fork 本仓库
 2. 在仓库 Settings → Pages → Source 选择 `main` 分支的 `/docs` 文件夹
-3. 访问 `https://你的用户名.github.io/power-consumption-calculator/`
+3. 访问 `https://你的用户名.github.io/Power-Consumption-Calculator/`
 
 ## 计算公式
 
