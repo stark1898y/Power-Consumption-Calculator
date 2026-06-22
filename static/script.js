@@ -1,8 +1,8 @@
 /*
  * @Author       : stark1898y 1658608470@qq.com
  * @Date         : 2025-11-09 23:02:54
- * @LastEditors  : stark1898y 1658608470@qq.com
- * @LastEditTime : 2025-11-09 23:23:27
+ * @LastEditors: stark1898y 1658608470@qq.com
+ * @LastEditTime: 2026-06-22 13:35:05
  * @FilePath     : \Power Consumption Calculator\static\script.js
  * @Description  :
  *
@@ -76,7 +76,7 @@ updateTotalEndVoltage();
 // 在 JavaScript 中添加电池类型切换逻辑
 function updateBatteryDefaults(type) {
     const defaults = {
-        "锂电池": { voltage: 3.6, endVoltage: 3.0, capacity: 19000, series: 1, parallel: 1 },
+        "锂电池": { voltage: 4.2, endVoltage: 3.6, capacity: 3500, series: 1, parallel: 1 },
         "一次性锂亚电池": { voltage: 3.6, endVoltage: 2.0, capacity: 19000, series: 1, parallel: 2 },
         "碱性干电池": { voltage: 1.5, endVoltage: 1.0, capacity: 2700, series: 2, parallel: 1 }
     };
