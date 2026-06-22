@@ -319,8 +319,8 @@ class PowerConsumeCalculator:
         """根据电池类型自动填充默认参数"""
         battery_type = self.battery_type_var.get()
         default_settings = {
-            "锂电池": {"voltage": 3.6, "end_voltage": 3.0, "capacity": 19000, "series": 1, "parallel": 1},
-            "一次性锂亚电池": {"voltage": 3.6, "end_voltage": 2.0, "capacity": 19000, "series": 1, "parallel": 2},
+            "锂电池": {"voltage": 4.2, "end_voltage": 3.6, "capacity": 3500, "series": 1, "parallel": 1},
+            "一次性锂亚电池": {"voltage": 3.6, "end_voltage": 3.3, "capacity": 19000, "series": 1, "parallel": 2},
             "碱性干电池": {"voltage": 1.5, "end_voltage": 1.0, "capacity": 2700, "series": 2, "parallel": 1}
         }
 
@@ -454,9 +454,9 @@ class PowerConsumeCalculator:
 
     def add_example_data(self):
         """初始化示例数据"""
-        self.mode_table.insert("", "end", values=("检测", "mA", "30", "s", "30.0", "48"))
-        self.mode_table.insert("", "end", values=("上传", "mA", "40", "s", "20.0", "1"))
-        self.mode_table.insert("", "end", values=("拍照+上传", "mA", "100", "s", "60.0", "1"))
+        self.mode_table.insert("", "end", values=("检测", "mA", "40", "s", "30.0", "48"))
+        self.mode_table.insert("", "end", values=("上传", "mA", "50", "s", "20.0", "1"))
+        self.mode_table.insert("", "end", values=("拍照+上传", "mA", "250", "s", "60.0", "1"))
         self.mode_table.insert("", "end", values=("休眠", "uA", "30", "s", "0", "1"))
         self.update_sleep_duration()
 
