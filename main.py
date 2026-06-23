@@ -4,11 +4,33 @@ PowerConsume 功耗计算器
 支持多种电池类型，计算设备续航时间或所需电池容量。
 """
 
+# ==================== 版本信息 ====================
+__version__ = "1.0.0"
+__author__ = "Yzy"
+__license__ = "MIT"
+
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 import tkinter.simpledialog as simpledialog
 import math
 import json
+# ==================== 颜色方案 ====================
+COLORS = {
+    "primary": "#667eea",       # 主色调 - 蓝紫
+    "primary_dark": "#5a67d8",
+    "secondary": "#764ba2",     # 辅助色 - 紫
+    "accent": "#e67e22",        # 强调色 - 橙
+    "success": "#48bb78",       # 成功 - 绿
+    "danger": "#e53e3e",        # 危险 - 红
+    "bg": "#f7fafc",            # 背景 - 浅灰
+    "card_bg": "#ffffff",       # 卡片背景
+    "text": "#2d3748",          # 主文字
+    "text_light": "#718096",    # 次要文字
+    "border": "#e2e8f0",        # 边框
+    "header_start": "#667eea",  # 标题渐变起始
+    "header_end": "#764ba2",    # 标题渐变结束
+}
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
@@ -17,9 +39,7 @@ from fpdf import FPDF, YPos, XPos
 import os
 from datetime import datetime
 import sys
-
-
-import matplotlib.pyplot as plt
+import webbrowser
 
 # 全局设置中文字体
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS']
@@ -66,10 +86,10 @@ def convert_from_seconds(seconds: float, unit: str) -> float:
 class PowerConsumeCalculator:
     def __init__(self, root):
         self.root = root
-        self.root.title("PowerConsume 功耗计算器")
-        # self.root.geometry("1200x800")
-        self.root.geometry("1400x900")  # 从 1200x800 增大到 1400x900
-        self.root.configure(bg="#f0f0f0")
+        self.root.title(f"PowerConsume 功耗计算器 v{__version__}")
+        self.root.geometry("1400x950")
+        self.root.configure(bg=COLORS["bg"])
+        self.root.minsize(1200, 800)
 
         # 初始化电池老化模型参数
         self.battery_aging_model = {
@@ -78,132 +98,161 @@ class PowerConsumeCalculator:
             "step": {"name": "阶跃衰减", "params": {"threshold": 0.8, "drop": 0.1}}
         }
         self.selected_aging_model = "linear"
+        self.discharge_curve = {"model": "linear", "custom_points": [(0, 1.0), (0.5, 0.9), (1.0, 0.8)]}
 
-        # 初始化放电曲线参数
-        self.discharge_curve = {
-            "model": "linear",
-            "custom_points": [(0, 1.0), (0.5, 0.9), (1.0, 0.8)]
-        }
+        # 设置样式
+        self.setup_styles()
 
-        # 创建主框架并设置 grid 权重
-        main_frame = ttk.Frame(root, padding="20")
-        main_frame.pack(fill="both", expand=True)
+        # ==================== 标题横幅 ====================
+        header = tk.Frame(root, bg=COLORS["primary"], height=70)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        tk.Label(
+            header, text="⚡ PowerConsume 功耗计算器",
+            font=("Microsoft YaHei UI", 20, "bold"),
+            fg="white", bg=COLORS["primary"]
+        ).pack(side="left", padx=25, pady=15)
+
+        tk.Label(
+            header, text=f"v{__version__}",
+            font=("Arial", 11),
+            fg="#b8c4ff", bg=COLORS["primary"]
+        ).pack(side="left", pady=15)
+
+        # 右侧按钮
+        btn_frame = tk.Frame(header, bg=COLORS["primary"])
+        btn_frame.pack(side="right", padx=20, pady=15)
+        self._make_header_btn(btn_frame, "关于", self.show_about).pack(side="right", padx=5)
+
+        # ==================== 可滚动主区域 ====================
+        container = ttk.Frame(root)
+        container.pack(fill="both", expand=True, padx=15, pady=(10, 0))
+
+        canvas = tk.Canvas(container, bg=COLORS["bg"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        main_frame = ttk.Frame(canvas, padding="5")
+
+        main_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas_window = canvas.create_window((0, 0), window=main_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # 让 main_frame 宽度跟随 Canvas 自适应
+        def _on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # 绑定鼠标滚轮
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
         main_frame.columnconfigure(0, weight=1)
 
-        # 设置行权重：让结果区域获得更多空间
-        for i in range(9):  # 总共9行
-            if i == 8:  # 最后一行（结果区域）权重最大
-                main_frame.rowconfigure(i, weight=3)
-            else:
-                main_frame.rowconfigure(i, weight=0)
+        # ==================== 电池信息卡片 ====================
+        battery_card = self._make_card(main_frame, "🔋 电池信息")
+        battery_card.grid(row=0, column=0, sticky="ew", padx=5, pady=6)
 
-        # ==================== 电池信息区域 ====================
-        battery_frame = ttk.LabelFrame(main_frame, text="电池信息", padding="10")
-        battery_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        battery_inner = ttk.Frame(battery_card.body, style="Card.TFrame")
+        battery_inner.pack(fill="x", padx=10, pady=(0, 10))
+        # 让偶数列（标签列）和奇数列（输入列）均匀分布
+        for c in range(6):
+            battery_inner.columnconfigure(c, weight=1 if c % 2 == 1 else 0)
 
-        # 第1行：电池类型、经验系数、老化模型
-        ttk.Label(battery_frame, text="电池类型:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        # Row 0: 电池类型、经验系数、老化模型
+        self._make_label(battery_inner, "电池类型:", 0, 0)
         self.battery_type_var = tk.StringVar(value="锂电池")
-        battery_combo = ttk.Combobox(
-            battery_frame,
-            textvariable=self.battery_type_var,
-            values=["锂电池", "一次性锂亚电池", "碱性干电池"],
-            state="readonly",
-            width=15
-        )
-        battery_combo.grid(row=0, column=1, padx=5, pady=5)
+        battery_combo = ttk.Combobox(battery_inner, textvariable=self.battery_type_var,
+                                     values=["锂电池", "一次性锂亚电池", "碱性干电池"],
+                                     state="readonly", style="Custom.TCombobox")
+        battery_combo.grid(row=0, column=1, padx=8, pady=5, sticky="ew")
         battery_combo.bind("<<ComboboxSelected>>", self.on_battery_type_change)
 
-        ttk.Label(battery_frame, text="经验系数:").grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "经验系数:", 0, 2)
         self.experience_factor_var = tk.StringVar(value="0.7")
-        ttk.Entry(battery_frame, textvariable=self.experience_factor_var, width=10).grid(row=0, column=3, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.experience_factor_var,
+                  style="Custom.TEntry").grid(row=0, column=3, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(battery_frame, text="老化模型:").grid(row=0, column=4, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "老化模型:", 0, 4)
         self.aging_model_var = tk.StringVar(value="线性衰减")
-        aging_models = [model["name"] for model in self.battery_aging_model.values()]
-        aging_combo = ttk.Combobox(
-            battery_frame,
-            textvariable=self.aging_model_var,
-            values=aging_models,
-            state="readonly",
-            width=15
-        )
-        aging_combo.grid(row=0, column=5, padx=5, pady=5)
+        aging_combo = ttk.Combobox(battery_inner, textvariable=self.aging_model_var,
+                                   values=[m["name"] for m in self.battery_aging_model.values()],
+                                   state="readonly", style="Custom.TCombobox")
+        aging_combo.grid(row=0, column=5, padx=8, pady=5, sticky="ew")
         aging_combo.bind("<<ComboboxSelected>>", self.on_aging_model_change)
 
-        # 第2行：串联/并联
-        ttk.Label(battery_frame, text="串联个数:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        # Row 1: 串联/并联
+        self._make_label(battery_inner, "串联个数:", 1, 0)
         self.series_count_var = tk.StringVar(value="1")
-        ttk.Entry(battery_frame, textvariable=self.series_count_var, width=5).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.series_count_var,
+                  style="Custom.TEntry").grid(row=1, column=1, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(battery_frame, text="并联个数:").grid(row=1, column=2, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "并联个数:", 1, 2)
         self.parallel_count_var = tk.StringVar(value="1")
-        ttk.Entry(battery_frame, textvariable=self.parallel_count_var, width=5).grid(row=1, column=3, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.parallel_count_var,
+                  style="Custom.TEntry").grid(row=1, column=3, padx=8, pady=5, sticky="ew")
 
-        # 第3行：单节参数
-        ttk.Label(battery_frame, text="单节电压 (V):").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        # Row 2: 单节参数
+        self._make_label(battery_inner, "单节电压 (V):", 2, 0)
         self.cell_voltage_var = tk.StringVar(value="3.6")
-        ttk.Entry(battery_frame, textvariable=self.cell_voltage_var, width=10).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.cell_voltage_var,
+                  style="Custom.TEntry").grid(row=2, column=1, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(battery_frame, text="终止电压 (V):").grid(row=2, column=2, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "终止电压 (V):", 2, 2)
         self.end_voltage_var = tk.StringVar(value="3.0")
-        ttk.Entry(battery_frame, textvariable=self.end_voltage_var, width=10).grid(row=2, column=3, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.end_voltage_var,
+                  style="Custom.TEntry").grid(row=2, column=3, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(battery_frame, text="单节容量 (mAh)(从起始电压放电至终止电压的可用容量):").grid(row=2, column=4, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "单节容量 (mAh):", 2, 4)
         self.cell_capacity_var = tk.StringVar(value="19000")
-        ttk.Entry(battery_frame, textvariable=self.cell_capacity_var, width=10).grid(row=2, column=5, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.cell_capacity_var,
+                  style="Custom.TEntry").grid(row=2, column=5, padx=8, pady=5, sticky="ew")
 
-        # 第4行：总参数（只读）
-        ttk.Label(battery_frame, text="总电压 (V):").grid(row=3, column=0, sticky="w", padx=5, pady=5)
+        # Row 3: 总参数（只读，高亮显示）
+        self._make_label(battery_inner, "总电压 (V):", 3, 0)
         self.total_voltage_var = tk.StringVar(value="3.6")
-        ttk.Entry(battery_frame, textvariable=self.total_voltage_var, width=10, state="readonly").grid(row=3, column=1, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.total_voltage_var,
+                  style="Readonly.TEntry", state="readonly").grid(row=3, column=1, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(battery_frame, text="总终止电压 (V):").grid(row=3, column=2, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "总终止电压 (V):", 3, 2)
         self.total_end_voltage_var = tk.StringVar(value="3.0")
-        ttk.Entry(battery_frame, textvariable=self.total_end_voltage_var, width=10, state="readonly").grid(row=3, column=3, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.total_end_voltage_var,
+                  style="Readonly.TEntry", state="readonly").grid(row=3, column=3, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(battery_frame, text="总容量 (mAh):").grid(row=3, column=4, sticky="w", padx=5, pady=5)
+        self._make_label(battery_inner, "总容量 (mAh):", 3, 4)
         self.total_capacity_var = tk.StringVar(value="19000")
-        ttk.Entry(battery_frame, textvariable=self.total_capacity_var, width=10, state="readonly").grid(row=3, column=5, padx=5, pady=5)
+        ttk.Entry(battery_inner, textvariable=self.total_capacity_var,
+                  style="Readonly.TEntry", state="readonly").grid(row=3, column=5, padx=8, pady=5, sticky="ew")
 
-        # 绑定变化事件
         self.series_count_var.trace_add("write", self.update_total_values)
         self.parallel_count_var.trace_add("write", self.update_total_values)
         self.cell_voltage_var.trace_add("write", self.update_total_values)
         self.cell_capacity_var.trace_add("write", self.update_total_values)
 
-        # ==================== 工作模式设置 ====================
-        mode_frame = ttk.LabelFrame(main_frame, text="工作模式设置", padding="5")
-        mode_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        # ==================== 工作模式卡片 ====================
+        mode_card = self._make_card(main_frame, "⚙️ 工作模式设置")
+        mode_card.grid(row=1, column=0, sticky="ew", padx=5, pady=6)
 
-        table_container = ttk.Frame(mode_frame)
-        table_container.pack(fill="x", pady=2)
+        table_container = ttk.Frame(mode_card.body, style="Card.TFrame")
+        table_container.pack(fill="both", padx=10, pady=(0, 5), expand=True)
         table_container.pack_propagate(False)
-        table_container.configure(height=120)
+        table_container.configure(height=150)
 
         self.mode_table = ttk.Treeview(
             table_container,
             columns=("mode", "current_unit", "current_value", "duration_unit", "duration_value", "times_per_day"),
-            show="headings",
-            height=5
+            show="headings", height=5, style="Custom.Treeview"
         )
-        self.mode_table.heading("mode", text="模式")
-        self.mode_table.column("mode", width=70, anchor="center")
-
-        self.mode_table.heading("current_unit", text="电流单位")
-        self.mode_table.column("current_unit", width=50, anchor="center")
-
-        self.mode_table.heading("current_value", text="平均电流")
-        self.mode_table.column("current_value", width=65, anchor="center")
-
-        self.mode_table.heading("duration_unit", text="时长单位")
-        self.mode_table.column("duration_unit", width=50, anchor="center")
-
-        self.mode_table.heading("duration_value", text="时长值")
-        self.mode_table.column("duration_value", width=65, anchor="center")
-
-        self.mode_table.heading("times_per_day", text="每天次数")
-        self.mode_table.column("times_per_day", width=65, anchor="center")
+        for col, text, w in [
+            ("mode", "模式", 90), ("current_unit", "电流单位", 70),
+            ("current_value", "平均电流", 80), ("duration_unit", "时长单位", 70),
+            ("duration_value", "时长值", 80), ("times_per_day", "每天次数", 80)
+        ]:
+            self.mode_table.heading(col, text=text)
+            self.mode_table.column(col, width=w, anchor="center")
 
         xscroll = ttk.Scrollbar(table_container, orient="horizontal", command=self.mode_table.xview)
         self.mode_table.configure(xscrollcommand=xscroll.set)
@@ -212,88 +261,255 @@ class PowerConsumeCalculator:
 
         self.setup_double_click_edit()
 
-        # ==================== 操作按钮 ====================
-        action_frame = ttk.Frame(main_frame)
-        action_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+        # 添加/删除模式按钮
+        mode_btn_frame = ttk.Frame(mode_card.body, style="Card.TFrame")
+        mode_btn_frame.pack(fill="x", padx=10, pady=(0, 10))
+        self._make_action_btn(mode_btn_frame, "➕ 添加模式", self.add_mode, "success").pack(side="left", padx=3)
+        self._make_action_btn(mode_btn_frame, "➖ 删除模式", self.delete_mode, "danger").pack(side="left", padx=3)
+        self._make_action_btn(mode_btn_frame, "🗑️ 清空模式", self.clear_modes, "danger").pack(side="left", padx=3)
 
-        ttk.Button(action_frame, text="清空结果", command=self.clear_results).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="导出结果", command=self.export_result).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="保存配置", command=self.save_config).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="加载配置", command=self.load_config).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="导出PDF", command=self.export_pdf).pack(side="left", padx=5)
-        ttk.Button(action_frame, text="显示图表", command=self.show_chart).pack(side="left", padx=5)
+        # ==================== 计算模式 + 输入 卡片 ====================
+        calc_card = self._make_card(main_frame, "📊 计算设置")
+        calc_card.grid(row=2, column=0, sticky="ew", padx=5, pady=6)
 
-        # ==================== 计算模式选择 ====================
-        calc_frame = ttk.LabelFrame(main_frame, text="计算模式", padding="10")
-        calc_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        calc_inner = ttk.Frame(calc_card.body, style="Card.TFrame")
+        calc_inner.pack(fill="x", padx=10, pady=(0, 10))
 
+        # 计算模式单选
         self.calc_mode = tk.StringVar(value="续航时间")
-        ttk.Radiobutton(calc_frame, text="计算续航时间", variable=self.calc_mode, value="续航时间").grid(row=0, column=0, sticky="w", padx=5)
-        ttk.Radiobutton(calc_frame, text="计算所需容量", variable=self.calc_mode, value="所需容量").grid(row=0, column=1, sticky="w", padx=5)
+        ttk.Radiobutton(calc_inner, text="🔋 计算续航时间", variable=self.calc_mode,
+                        value="续航时间", style="Custom.TRadiobutton").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        ttk.Radiobutton(calc_inner, text="📏 计算所需容量", variable=self.calc_mode,
+                        value="所需容量", style="Custom.TRadiobutton").grid(row=0, column=1, padx=10, pady=5, sticky="w")
 
-        # ==================== 输入区域 ====================
-        calc_area = ttk.Frame(main_frame)
-        calc_area.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
-
-        ttk.Label(calc_area, text="输入:").grid(row=0, column=0, sticky="e", padx=5)
+        # 输入区域
+        self._make_label(calc_inner, "输入值:", 1, 0)
         self.input_var = tk.StringVar(value="5000")
-        ttk.Entry(calc_area, textvariable=self.input_var, width=10).grid(row=0, column=1, padx=5)
+        ttk.Entry(calc_inner, textvariable=self.input_var,
+                  style="Custom.TEntry").grid(row=1, column=1, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(calc_area, text="单位:").grid(row=0, column=2, sticky="w", padx=5)
+        self._make_label(calc_inner, "单位:", 1, 2)
         self.unit_var = tk.StringVar(value="天")
-        unit_combo = ttk.Combobox(calc_area, textvariable=self.unit_var, values=["天", "h", "min"], width=5, state="readonly")
-        unit_combo.grid(row=0, column=3, padx=5)
+        ttk.Combobox(calc_inner, textvariable=self.unit_var, values=["天", "h", "min"],
+                     state="readonly", style="Custom.TCombobox").grid(row=1, column=3, padx=8, pady=5, sticky="ew")
 
-        ttk.Label(calc_area, text="(续航时间) 或 mAh (容量)").grid(row=0, column=4, sticky="w", padx=5)
+        ttk.Label(calc_inner, text="(续航时间) 或 mAh (容量)",
+                  font=("Arial", 9), foreground=COLORS["text_light"],
+                  background=COLORS["card_bg"]).grid(row=1, column=4, padx=8, sticky="w")
 
-        ttk.Button(calc_area, text="计算", command=self.calculate).grid(row=0, column=5, padx=10, sticky="e")
+        # 主计算按钮
+        calc_btn = tk.Button(
+            calc_inner, text="🧮 计 算", font=("Microsoft YaHei UI", 12, "bold"),
+            fg="white", bg=COLORS["primary"], activebackground=COLORS["primary_dark"],
+            activeforeground="white", relief="flat", cursor="hand2",
+            padx=30, pady=6, command=self.calculate
+        )
+        calc_btn.grid(row=0, column=5, rowspan=2, padx=20, pady=5, sticky="e")
+        calc_inner.columnconfigure(5, weight=1)
 
-        # # ==================== 操作按钮 ====================
-        # action_frame = ttk.Frame(main_frame)
-        # action_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+        # ==================== 操作按钮栏 ====================
+        action_card = ttk.Frame(main_frame, style="Card.TFrame")
+        action_card.grid(row=3, column=0, sticky="ew", padx=5, pady=6)
 
-        # ttk.Button(action_frame, text="导出结果", command=self.export_result).pack(side="left", padx=5)
-        # ttk.Button(action_frame, text="保存配置", command=self.save_config).pack(side="left", padx=5)
-        # ttk.Button(action_frame, text="加载配置", command=self.load_config).pack(side="left", padx=5)
-        # ttk.Button(action_frame, text="导出PDF", command=self.export_pdf).pack(side="left", padx=5)
-        # ttk.Button(action_frame, text="显示图表", command=self.show_chart).pack(side="left", padx=5)
+        for text, cmd, color_key in [
+            ("📄 导出结果", self.export_result, "primary"),
+            ("💾 保存配置", self.save_config, "success"),
+            ("📂 加载配置", self.load_config, "success"),
+            ("📑 导出 PDF", self.export_pdf, "accent"),
+            ("📈 显示图表", self.show_chart, "secondary"),
+            ("🗑️ 清空结果", self.clear_results, "danger"),
+        ]:
+            self._make_action_btn(action_card, text, cmd, color_key).pack(side="left", padx=4, pady=8)
 
-        # ==================== 结果展示 ====================
-        result_frame = ttk.LabelFrame(main_frame, text="计算结果", padding="10")
-        result_frame.grid(row=8, column=0, sticky="nsew", padx=5, pady=5)
-        result_frame.columnconfigure(0, weight=1)
-        result_frame.rowconfigure(0, weight=1)
+        # ==================== 结果展示卡片 ====================
+        result_card = self._make_card(main_frame, "📋 计算结果")
+        result_card.grid(row=4, column=0, sticky="nsew", padx=5, pady=6)
+        main_frame.rowconfigure(4, weight=1)
+
+        # 左侧彩色指示条（放在 body 内部）
+        indicator = tk.Frame(result_card.body, bg=COLORS["primary"], width=4)
+        indicator.pack(side="left", fill="y", padx=(0, 0))
+
+        result_inner = ttk.Frame(result_card.body, style="Card.TFrame")
+        result_inner.pack(fill="both", expand=True, padx=5, pady=5)
+        result_inner.columnconfigure(0, weight=1)
+        result_inner.rowconfigure(0, weight=1)
 
         self.result_text = scrolledtext.ScrolledText(
-            result_frame,
-            wrap=tk.WORD,
-            font=("Arial", 11),
-            width=180,
-            height=35,
-            bg="white",
-            relief="solid",
-            padx=10,
-            pady=10
+            result_inner, wrap=tk.WORD,
+            font=("Consolas", 11), fg=COLORS["text"],
+            bg=COLORS["card_bg"], relief="flat",
+            padx=15, pady=10, spacing1=2, spacing3=2,
+            selectbackground=COLORS["primary"], selectforeground="white"
         )
         self.result_text.grid(row=0, column=0, sticky="nsew")
         self.result_text.configure(state="disabled")
-        # self.result_text.pack(fill="both", expand=True)
-        # self.result_text.configure(state="disabled")
+
+        # 配置结果区域的标签样式
+        self.result_text.tag_configure("title", font=("Microsoft YaHei UI", 13, "bold"),
+                                       foreground=COLORS["primary"], spacing3=8)
+        self.result_text.tag_configure("highlight", font=("Consolas", 12, "bold"),
+                                       foreground=COLORS["accent"])
+        self.result_text.tag_configure("success", font=("Consolas", 14, "bold"),
+                                       foreground=COLORS["success"])
+        self.result_text.tag_configure("label", foreground=COLORS["text_light"])
+        self.result_text.tag_configure("value", font=("Consolas", 11, "bold"),
+                                       foreground=COLORS["text"])
+        self.result_text.tag_configure("separator", foreground=COLORS["border"])
 
         # 初始化示例数据
         self.add_example_data()
 
+        # ==================== 底部状态栏 ====================
+        status_frame = tk.Frame(root, bg=COLORS["border"], height=30)
+        status_frame.pack(side="bottom", fill="x")
+        status_frame.pack_propagate(False)
+
+        tk.Label(
+            status_frame,
+            text=f"PowerConsume Calculator v{__version__}  © 2025 {__author__}  |  MIT License",
+            font=("Arial", 9), fg=COLORS["text_light"], bg=COLORS["border"]
+        ).pack(side="left", padx=15)
+
+        tk.Label(status_frame, text="|", font=("Arial", 9),
+                 fg="#cccccc", bg=COLORS["border"]).pack(side="right", padx=5)
+
+        gitee_lbl = tk.Label(status_frame, text="Gitee", font=("Arial", 9, "underline"),
+                             fg="#c71d23", bg=COLORS["border"], cursor="hand2")
+        gitee_lbl.pack(side="right")
+        gitee_lbl.bind("<Button-1>", lambda e: webbrowser.open("https://gitee.com/stark1898/power-consumption-calculator"))
+
+        github_lbl = tk.Label(status_frame, text="GitHub", font=("Arial", 9, "underline"),
+                              fg=COLORS["primary"], bg=COLORS["border"], cursor="hand2")
+        github_lbl.pack(side="right", padx=(0, 8))
+        github_lbl.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/stark1898y/Power-Consumption-Calculator"))
+
     def show_about(self):
         """显示关于对话框"""
         about_text = (
-            "PowerConsume 功耗计算器\n"
-            "版本: 1.0.0\n"
-            # "编译时间: 2025-04-05 10:30\n"
-            # 用 datetime.now() 动态获取编译时间，但通常建议写死或从构建脚本注入。
-            "作者: Yzy\n"
-            "功能: 电池续航与容量计算"
+            f"PowerConsume 功耗计算器\n"
+            f"版本: v{__version__}\n"
+            f"作者: {__author__}\n"
+            f"许可证: {__license__}\n\n"
+            f"功能: 电池续航与容量计算\n"
+            f"支持: 锂电池 / 锂亚电池 / 碱性干电池\n"
+            f"      串并联配置 / 多工作模式 / PDF导出\n\n"
+            f"GitHub: github.com/stark1898y/Power-Consumption-Calculator\n"
+            f"Gitee:  gitee.com/stark1898/power-consumption-calculator"
         )
         messagebox.showinfo("关于", about_text)
+
+    # ==================== 样式和辅助方法 ====================
+
+    def setup_styles(self):
+        """设置 ttk 样式主题"""
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # 全局
+        style.configure(".", background=COLORS["bg"], foreground=COLORS["text"],
+                        font=("Microsoft YaHei UI", 10))
+
+        # 卡片框架
+        style.configure("Card.TFrame", background=COLORS["card_bg"])
+        style.configure("Card.TLabelframe", background=COLORS["card_bg"],
+                        foreground=COLORS["text"], font=("Microsoft YaHei UI", 11, "bold"))
+        style.configure("Card.TLabelframe.Label", background=COLORS["card_bg"],
+                        foreground=COLORS["primary"], font=("Microsoft YaHei UI", 11, "bold"))
+
+        # 输入框
+        style.configure("Custom.TEntry", fieldbackground="white", borderwidth=2,
+                        relief="solid", padding=5)
+        style.map("Custom.TEntry",
+                  fieldbackground=[("focus", "#fff5f0")],
+                  bordercolor=[("focus", COLORS["primary"])])
+
+        # 只读输入框
+        style.configure("Readonly.TEntry", fieldbackground="#f0f4ff",
+                        foreground=COLORS["primary"], borderwidth=2,
+                        relief="solid", padding=5, font=("Consolas", 10, "bold"))
+
+        # 下拉框
+        style.configure("Custom.TCombobox", fieldbackground="white",
+                        borderwidth=2, relief="solid", padding=5)
+        style.map("Custom.TCombobox",
+                  fieldbackground=[("focus", "#fff5f0")],
+                  bordercolor=[("focus", COLORS["primary"])])
+
+        # 单选按钮
+        style.configure("Custom.TRadiobutton", background=COLORS["card_bg"],
+                        font=("Microsoft YaHei UI", 10), padding=5)
+        style.map("Custom.TRadiobutton",
+                  foreground=[("selected", COLORS["primary"])])
+
+        # Treeview 表格
+        style.configure("Custom.Treeview", background="white",
+                        fieldbackground="white", rowheight=28,
+                        font=("Microsoft YaHei UI", 10))
+        style.configure("Custom.Treeview.Heading",
+                        background=COLORS["primary"], foreground="white",
+                        font=("Microsoft YaHei UI", 10, "bold"), relief="flat")
+        style.map("Custom.Treeview",
+                  background=[("selected", COLORS["primary"])],
+                  foreground=[("selected", "white")])
+        style.map("Custom.Treeview.Heading",
+                  background=[("active", COLORS["primary_dark"])])
+
+    def _make_card(self, parent, title):
+        """创建卡片式容器，返回 outer（用于布局），通过 card.body 访问内容区"""
+        outer = tk.Frame(parent, bg=COLORS["border"], padx=1, pady=1)
+        inner = tk.Frame(outer, bg=COLORS["card_bg"])
+        inner.pack(fill="both", expand=True)
+        outer.body = inner  # 暴露内容区给调用者
+
+        # 标题栏
+        header = tk.Frame(inner, bg=COLORS["card_bg"], height=35)
+        header.pack(fill="x", padx=12, pady=(10, 5))
+        header.pack_propagate(False)
+
+        # 左侧色条
+        tk.Frame(header, bg=COLORS["primary"], width=4).pack(side="left", fill="y", padx=(0, 8))
+        tk.Label(header, text=title, font=("Microsoft YaHei UI", 11, "bold"),
+                 fg=COLORS["text"], bg=COLORS["card_bg"]).pack(side="left")
+
+        return outer
+
+    def _make_label(self, parent, text, row, col):
+        """创建统一样式的标签"""
+        lbl = tk.Label(parent, text=text, font=("Microsoft YaHei UI", 10),
+                       fg=COLORS["text_light"], bg=COLORS["card_bg"])
+        lbl.grid(row=row, column=col, sticky="e", padx=(10, 2), pady=5)
+        return lbl
+
+    def _make_header_btn(self, parent, text, cmd):
+        """标题栏按钮"""
+        btn = tk.Button(parent, text=text, font=("Arial", 10),
+                        fg="white", bg=COLORS["secondary"],
+                        activebackground="#8e44ad", activeforeground="white",
+                        relief="flat", cursor="hand2", padx=12, pady=3, command=cmd)
+        return btn
+
+    def _make_action_btn(self, parent, text, cmd, color_key="primary"):
+        """操作按钮"""
+        color = COLORS.get(color_key, COLORS["primary"])
+        btn = tk.Button(parent, text=text, font=("Microsoft YaHei UI", 9),
+                        fg="white", bg=color, activebackground=color,
+                        activeforeground="white", relief="flat", cursor="hand2",
+                        padx=10, pady=5, command=cmd)
+        btn.configure(borderwidth=0)
+        # hover 效果
+        darker = self._darken_color(color, 0.85)
+        btn.bind("<Enter>", lambda e: btn.configure(bg=darker))
+        btn.bind("<Leave>", lambda e: btn.configure(bg=color))
+        return btn
+
+    @staticmethod
+    def _darken_color(hex_color, factor=0.85):
+        """将颜色变暗"""
+        hex_color = hex_color.lstrip("#")
+        r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        r, g, b = int(r * factor), int(g * factor), int(b * factor)
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def update_total_values(self, *args):
         """更新总电压、总容量和总终止电压"""
@@ -574,7 +790,6 @@ class PowerConsumeCalculator:
     def _calculate_battery_life(self, voltage, capacity, experience_factor,
                                 daily_total_energy, modes, input_ms, unit, end_voltage):
         """计算电池续航时间"""
-        input_seconds = convert_to_seconds(input_ms, unit)
         average_voltage = (voltage + end_voltage) / 2
         total_energy_mwh = capacity * average_voltage
         usable_energy_mwh = total_energy_mwh * experience_factor
@@ -582,63 +797,90 @@ class PowerConsumeCalculator:
         hours = days * 24
         years = days / 365.25
 
-        result = f"总电压: {voltage:.2f} V\n"
-        result += f"总容量: {capacity:.2f} mAh\n"
-        result += f"平均电压: {average_voltage:.2f} V\n"
-        result += f"总能量: {total_energy_mwh:.2f} mWh\n"
-        result += f"可用能量: {usable_energy_mwh:.2f} mWh (×{experience_factor})\n"
-        result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
-        result += f"可使用时间: {hours:.2f} 小时 ({days:.2f} 天, {years:.2f} 年)\n\n"
-        result += "工作模式详情:\n"
-        for mode in modes:
-            result += f"  - {mode['name']}: {mode['current_ma']:.2f} mA, "
-            result += f"{mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n"
+        # 使用富文本显示结果
+        self.result_text.configure(state="normal")
+        self.result_text.delete(1.0, tk.END)
 
-        self.display_result(result)
+        self.result_text.insert(tk.END, "  🔋 续航时间计算结果\n\n", "title")
+        self.result_text.insert(tk.END, "─" * 50 + "\n", "separator")
+        self.result_text.insert(tk.END, "  电池参数\n", "label")
+        self.result_text.insert(tk.END, f"    总电压:     ", "label")
+        self.result_text.insert(tk.END, f"{voltage:.2f} V\n", "value")
+        self.result_text.insert(tk.END, f"    总容量:     ", "label")
+        self.result_text.insert(tk.END, f"{capacity:.2f} mAh\n", "value")
+        self.result_text.insert(tk.END, f"    平均电压:   ", "label")
+        self.result_text.insert(tk.END, f"{average_voltage:.2f} V\n", "value")
+        self.result_text.insert(tk.END, f"    总能量:     ", "label")
+        self.result_text.insert(tk.END, f"{total_energy_mwh:.2f} mWh\n", "value")
+        self.result_text.insert(tk.END, f"    可用能量:   ", "label")
+        self.result_text.insert(tk.END, f"{usable_energy_mwh:.2f} mWh", "value")
+        self.result_text.insert(tk.END, f"  (×{experience_factor})\n\n", "label")
+
+        self.result_text.insert(tk.END, "─" * 50 + "\n", "separator")
+        self.result_text.insert(tk.END, f"  每日功耗:   ", "label")
+        self.result_text.insert(tk.END, f"{daily_total_energy:.4f} mWh\n\n", "highlight")
+
+        self.result_text.insert(tk.END, "═" * 50 + "\n", "separator")
+        self.result_text.insert(tk.END, f"  可使用时间: ", "label")
+        self.result_text.insert(tk.END, f"{hours:.2f} 小时  ({days:.2f} 天, {years:.2f} 年)\n", "success")
+        self.result_text.insert(tk.END, "═" * 50 + "\n\n", "separator")
+
+        self.result_text.insert(tk.END, "  工作模式详情:\n", "label")
+        for mode in modes:
+            self.result_text.insert(tk.END, f"    • {mode['name']}: ", "value")
+            self.result_text.insert(tk.END,
+                f"{mode['current_ma']:.2f} mA, {mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n", "label")
+
+        self.result_text.configure(state="disabled")
+
         self.last_calculation_result = {
-            "type": "battery_life",
-            "voltage": voltage,
-            "capacity": capacity,
-            "average_voltage": average_voltage,
-            "total_energy_mwh": total_energy_mwh,
-            "usable_energy_mwh": usable_energy_mwh,
-            "experience_factor": experience_factor,
-            "daily_total_energy": daily_total_energy,
-            "days": days,
-            "hours": hours,
-            "years": years,
-            "modes": modes
+            "type": "battery_life", "voltage": voltage, "capacity": capacity,
+            "average_voltage": average_voltage, "total_energy_mwh": total_energy_mwh,
+            "usable_energy_mwh": usable_energy_mwh, "experience_factor": experience_factor,
+            "daily_total_energy": daily_total_energy, "days": days, "hours": hours,
+            "years": years, "modes": modes
         }
 
     def _calculate_required_capacity(self, input_ms, voltage, experience_factor,
                                     daily_total_energy, modes, end_voltage):
         """计算所需电池容量"""
-        input_seconds = convert_to_seconds(input_ms, "s")  # 转换为秒
+        input_seconds = convert_to_seconds(input_ms, "s")
         required_energy_mwh = daily_total_energy * (input_seconds / 86400)
         average_voltage = (voltage + end_voltage) / 2
         required_capacity = required_energy_mwh / (average_voltage * experience_factor)
 
-        result = f"目标续航: {input_ms:.2f} ms ({input_seconds:.2f} 秒)\n"
-        result += f"每日功耗: {daily_total_energy:.4f} mWh\n"
-        result += f"所需容量: {required_capacity:.2f} mAh\n"
-        result += f"(考虑了 {experience_factor} 的经验系数和平均电压)\n\n"
-        result += "工作模式详情:\n"
-        for mode in modes:
-            result += f"  - {mode['name']}: {mode['current_ma']:.2f} mA, "
-            result += f"{mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n"
+        self.result_text.configure(state="normal")
+        self.result_text.delete(1.0, tk.END)
 
-        self.display_result(result)
+        self.result_text.insert(tk.END, "  📏 所需容量计算结果\n\n", "title")
+        self.result_text.insert(tk.END, "─" * 50 + "\n", "separator")
+        self.result_text.insert(tk.END, "  输入参数\n", "label")
+        self.result_text.insert(tk.END, f"    目标续航:   ", "label")
+        self.result_text.insert(tk.END, f"{input_ms:.2f} 天  ({input_seconds:.2f} 秒)\n", "value")
+        self.result_text.insert(tk.END, f"    每日功耗:   ", "label")
+        self.result_text.insert(tk.END, f"{daily_total_energy:.4f} mWh\n\n", "highlight")
+
+        self.result_text.insert(tk.END, "═" * 50 + "\n", "separator")
+        self.result_text.insert(tk.END, f"  所需容量:   ", "label")
+        self.result_text.insert(tk.END, f"{required_capacity:.2f} mAh\n", "success")
+        self.result_text.insert(tk.END, f"  (考虑了 {experience_factor} 的经验系数)\n", "label")
+        self.result_text.insert(tk.END, "═" * 50 + "\n\n", "separator")
+
+        self.result_text.insert(tk.END, "  工作模式详情:\n", "label")
+        for mode in modes:
+            self.result_text.insert(tk.END, f"    • {mode['name']}: ", "value")
+            self.result_text.insert(tk.END,
+                f"{mode['current_ma']:.2f} mA, {mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n", "label")
+
+        self.result_text.configure(state="disabled")
+
         self.last_calculation_result = {
-            "type": "required_capacity",
-            "input_ms": input_ms,
-            "input_seconds": input_seconds,
-            "voltage": voltage,
-            "average_voltage": average_voltage,
-            "experience_factor": experience_factor,
+            "type": "required_capacity", "input_ms": input_ms,
+            "input_seconds": input_seconds, "voltage": voltage,
+            "average_voltage": average_voltage, "experience_factor": experience_factor,
             "daily_total_energy": daily_total_energy,
             "required_energy_mwh": required_energy_mwh,
-            "required_capacity": required_capacity,
-            "modes": modes
+            "required_capacity": required_capacity, "modes": modes
         }
 
     def display_result(self, result):
