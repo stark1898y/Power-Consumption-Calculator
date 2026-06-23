@@ -23,15 +23,13 @@
 
 ```
 power-consumption-calculator/
-├── main.py                    # 桌面版主程序（Tkinter GUI）
-├── web_app.py                 # 网页版后端（Flask）
-├── static/
-│   └── script.js              # 网页版前端逻辑
+├── main.py                    # 桌面版主程序（Python + Tkinter GUI）
 ├── docs/
-│   └── index.html             # GitHub Pages 纯前端版本（Chart.js）
-├── requirements.txt           # Python 依赖
-├── main.spec                  # PyInstaller 打包配置
-├── PowerConsumeCalculator.spec
+│   └── index.html             # 纯前端版（HTML + JS + Chart.js，可直接打开或部署 GitHub Pages）
+├── requirements.txt           # Python 依赖（桌面版）
+├── PowerConsumeCalculator.spec # PyInstaller 打包配置
+├── dist/
+│   └── PowerConsumeCalculator.exe  # 打包好的 Windows 可执行文件
 ├── LICENSE                    # MIT 许可证
 └── README.md                  # 项目说明
 ```
@@ -40,9 +38,8 @@ power-consumption-calculator/
 
 | 版本               | 文件                | 技术栈                       | 运行方式                                            |
 | ------------------ | ------------------- | ---------------------------- | --------------------------------------------------- |
-| **桌面版**   | `main.py`         | Python + Tkinter             | 运行 `python main.py` 或打包 exe                  |
-| **网页版**   | `web_app.py`      | Python + Flask + JS          | 运行 `python web_app.py`，访问 `localhost:5000` |
-| **纯前端版** | `docs/index.html` | HTML + JavaScript + Chart.js | 直接打开 HTML 文件或部署到 GitHub Pages             |
+| **桌面版**   | `main.py`         | Python + Tkinter             | 运行 `python main.py` 或使用打包好的 exe           |
+| **纯前端版** | `docs/index.html` | HTML + JavaScript + Chart.js | 直接双击打开 HTML 文件或部署到 GitHub Pages          |
 
 ## 快速开始
 
@@ -56,25 +53,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 2. 网页版
+### 2. 纯前端版（推荐）
 
-```bash
-# 安装依赖
-pip install -r requirements.txt
+直接双击打开 `docs/index.html` 文件，无需安装任何依赖。
 
-# 运行 Flask 服务
-python web_app.py
-
-# 访问 http://localhost:5000
-```
-
-### 3. 纯前端版（GitHub Pages）
-
-直接打开 `docs/index.html` 文件，或部署到 GitHub Pages：
+也可部署到 GitHub Pages：
 
 1. Fork 本仓库
 2. 在仓库 Settings → Pages → Source 选择 `main` 分支的 `/docs` 文件夹
 3. 访问 `https://你的用户名.github.io/Power-Consumption-Calculator/`
+
+### 3. EXE 可执行文件（免安装）
+
+直接运行 `dist/PowerConsumeCalculator.exe`，无需 Python 环境。
 
 ## 计算公式
 
