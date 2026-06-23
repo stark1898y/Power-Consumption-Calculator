@@ -622,3 +622,9 @@ graph LR
 | 🚀 Gitee |  [stark1898/power-consumption-calculator](https://gitee.com/stark1898/power-consumption-calculator)  | 国内镜像 |
 
 欢迎 **Star** | **Fork** | **Issue**
+
+---
+
+## 参考
+
+- [PowerConsume功耗计算器](https://blog.csdn.net/yufm/article/details/134437810)
