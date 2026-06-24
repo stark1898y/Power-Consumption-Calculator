@@ -1,8 +1,11 @@
 # PowerConsume 功耗计算器：嵌入式设备电池续航计算完全指南
 
-> 做嵌入式开发、物联网产品的工程师，一定绕不开一个问题：**这颗电池能用多久？** 或者反过来：**要跑 N 天，需要多大的电池？** 手算太麻烦，Excel 容易出错，于是就有了这个工具 —— **PowerConsume 功耗计算器**。
+> 做嵌入式开发、物联网产品的工程师，一定绕不开一个问题：**这颗电池能用多久？** 或者反过来：**要跑 N 天，需要多大的电池？** 手算太麻烦，Excel 容易出错，于是就有了这个工具 —— **PowerConsume 功耗计算器**。这
 >
-> 在线体验：[https://stark1898y.github.io/Power-Consumption-Calculator/](https://stark1898y.github.io/Power-Consumption-Calculator/)
+> 是一款**开源免费的电池续航计算工具**，支持锂电池/锂亚电池/碱性干电池、多种工作模式（检测/上传/休眠）、串并联组合配置，自动推算休眠时长，一键算出续航天数或所需电池容量。提供**桌面版**（Python，可导出 PDF）和**纯前端版**（HTML，双击即用），无需登录即可上手。
+>
+> 在线体验：[https://stark1898y.github.io/Power-Consumption-Calculator/
+> ](https://stark1898y.github.io/Power-Consumption-Calculator/)
 
 ---
 
@@ -108,7 +111,6 @@ graph TB
 
     style Core fill:#e67e22,stroke:#d35400,color:white
     style Desktop fill:#3498db,stroke:#2980b9,color:white
-    style Web fill:#2ecc71,stroke:#27ae60,color:white
     style Frontend fill:#9b59b6,stroke:#8e44ad,color:white
 ```
 
@@ -132,13 +134,15 @@ python main.py
 - **卡片式 UI 布局**，蓝紫配色，可滚动窗口
 - **底部状态栏**：版本号、版权、GitHub / Gitee 可点击链接
 
-![桌面版界面](images/python_exe.png)
+![python_exe截图](images/python_exe.png)
+
+![图表.png](images/图表.png)
 
 ### 2. 纯前端版（推荐在线体验）
 
 直接双击打开 `docs/index.html`，或部署到 GitHub Pages。所有计算逻辑在浏览器端完成，**无需任何后端服务**，零依赖。
 
-![WEB版界面](images/web.png)
+![web截图](images/web.png)
 
 ---
 
@@ -320,13 +324,8 @@ power-consumption-calculator/
 ```python
 def convert_to_seconds(value: float, unit: str) -> float:
     """将任意单位的时间转换为秒"""
-    conversions = {
-        "ms": lambda v: v / 1000,
-        "min": lambda v: v * 60,
-        "h": lambda v: v * 3600,
-        "天": lambda v: v * 24 * 3600,
-    }
-    return conversions.get(unit, lambda v: v)(value)
+    factor = {"ms": 0.001, "min": 60, "h": 3600, "天": 86400}
+    return value * factor.get(unit, 1)
 ```
 
 **能量计算核心**
@@ -385,14 +384,14 @@ def update_sleep_duration(self):
 纯前端版将所有计算逻辑用 JavaScript 重写，图表使用 Chart.js 渲染，**无需任何后端**，单个 HTML 文件即可运行：
 
 ```javascript
-// 能量计算核心逻辑
-function calculateEnergy(currentMA, seconds, voltage) {
+// 能量计算
+function calcDailyEnergy(currentMA, seconds, voltage) {
     return (currentMA * seconds * voltage) / 3600; // mWh
 }
 
-// 续航计算
-function calculateBatteryLife(usableEnergy, dailyEnergy) {
-    return usableEnergy / dailyEnergy; // 天数
+// 续航天数
+function calcBatteryDays(usableEnergy, dailyEnergy) {
+    return usableEnergy / dailyEnergy;
 }
 ```
 
@@ -471,11 +470,11 @@ function calculateBatteryLife(usableEnergy, dailyEnergy) {
 
 ```
 满电:    4.2V ──┐
-                ├── 平均 ≈ 3.9V
+                ├── 平均 ≈ 3.6V  ( (4.2+3.0) / 2 )
 终止:    3.0V ──┘
 ```
 
-用平均电压计算能量更接近实际情况。如果直接用 3.7V 额定电压，误差约 5%。
+用平均电压计算能量更接近实际情况。
 
 ### Q3：休眠时间自动计算的逻辑是什么？
 
@@ -494,7 +493,7 @@ function calculateBatteryLife(usableEnergy, dailyEnergy) {
 
 ### Q5：纯前端版和桌面版的计算结果一样吗？
 
-完全一样。三个版本共享相同的计算逻辑，只是 UI 实现不同。前端版用 JavaScript，桌面版和网页版用 Python。
+完全一样。两个版本共享相同的计算逻辑，只是 UI 实现不同。桌面版用 Python，前端版用 JavaScript。
 
 ---
 

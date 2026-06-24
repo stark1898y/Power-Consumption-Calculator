@@ -1019,156 +1019,295 @@ class PowerConsumeCalculator:
                 messagebox.showerror("错误", f"加载失败: {str(e)}")
 
     def export_pdf(self):
-        """导出计算结果为 PDF（完全支持中文，包含功耗分布图表）"""
+        """导出计算结果为 PDF（卡片式 UI 风格，含功耗分布图表）"""
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-        result_text = self.result_text.get(1.0, tk.END).strip()
-        if not result_text:
-            messagebox.showwarning("警告", "没有计算结果可导出")
+        if not hasattr(self, 'last_calculation_result') or not self.last_calculation_result:
+            messagebox.showwarning("警告", "没有计算结果可导出，请先执行计算")
             return
 
-        modes = []
-        for item in self.mode_table.get_children():
-            values = self.mode_table.item(item, "values")
-            if len(values) >= 6:
-                modes.append(values)
-
+        result = self.last_calculation_result
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         default_name = f"功耗计算结果_{timestamp}.pdf"
         file_path = filedialog.asksaveasfilename(
-            initialfile=default_name,
-            defaultextension=".pdf",
+            initialfile=default_name, defaultextension=".pdf",
             filetypes=[("PDF文件", "*.pdf"), ("所有文件", "*.*")]
         )
         if not file_path:
             return
 
         try:
+            # ==================== 字体加载 ====================
+            chinese_font = 'simhei'
+            font_loaded = False
+            for fp in [
+                'C:/Windows/Fonts/simhei.ttf',
+                'C:/Windows/Fonts/msyh.ttc',
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "simhei.ttf"),
+                'C:/Windows/Fonts/simsun.ttc',
+            ]:
+                if os.path.exists(fp):
+                    pdf_tmp = FPDF()
+                    pdf_tmp.add_font(chinese_font, '', fp)
+                    font_loaded = True
+                    break
+            if not font_loaded:
+                raise Exception("无法加载中文字体")
+
+            # ==================== 创建 PDF ====================
             pdf = FPDF()
+            pdf.add_font(chinese_font, '', fp)
+            pdf.add_font(chinese_font, 'B', fp)
+            pdf.set_auto_page_break(auto=True, margin=25)
             pdf.add_page()
 
-            # === 关键修复：使用支持中文的字体 ===
-            # 1. 优先尝试系统黑体（SimHei） - Windows 默认中文字体
-            chinese_font = 'simhei'
-            system_font_path = 'C:/Windows/Fonts/simhei.ttf'
+            # ==================== 辅助函数 ====================
+            PRIMARY = (102, 126, 234)     # #667eea
+            SECONDARY = (118, 75, 162)    # #764ba2
+            TEXT_DARK = (45, 55, 72)      # #2d3748
+            TEXT_LIGHT = (113, 128, 150)  # #718096
+            BG_LIGHT = (247, 250, 252)    # #f7fafc
+            BORDER = (226, 232, 240)      # #e2e8f0
+            SUCCESS = (72, 187, 120)      # #48bb78
 
-            # 2. 检查系统字体是否存在
-            if os.path.exists(system_font_path):
-                print(f"使用系统字体: {system_font_path}")
-                # ✅ 关键修复：同时注册常规字体和加粗字体
-                pdf.add_font(chinese_font, '', system_font_path)  # 常规字体
-                pdf.add_font(chinese_font, 'B', system_font_path)  # 加粗字体
-            else:
-                # 3. 如果系统字体不存在，尝试使用项目内字体
-                project_font_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "fonts",
-                    "simhei.ttf"
-                )
-
-                if os.path.exists(project_font_path):
-                    print(f"使用项目内字体: {project_font_path}")
-                    # ✅ 同时注册常规字体和加粗字体
-                    pdf.add_font(chinese_font, '', project_font_path)
-                    pdf.add_font(chinese_font, 'B', project_font_path)
-                else:
-                    # 4. 最后备选：使用系统宋体（SimSun）
-                    fallback_font_path = 'C:/Windows/Fonts/simsun.ttc'
-                    if os.path.exists(fallback_font_path):
-                        print(f"使用备选字体: {fallback_font_path}")
-                        # ✅ 同时注册常规字体和加粗字体
-                        pdf.add_font(chinese_font, '', fallback_font_path)
-                        pdf.add_font(chinese_font, 'B', fallback_font_path)
-                    else:
-                        # 5. 如果所有字体都失败，使用默认字体（不支持中文）
-                        print("警告：无法加载中文字体，将使用Helvetica")
-                        pdf.set_font('Helvetica', '', 12)
-                        raise Exception("无法加载中文字体，PDF可能无法显示中文")
-
-            # === 设置中文字体 ===
-            pdf.set_font(chinese_font, '', 12)  # 常规字体
-
-            # === 标题（加粗） ===
-            pdf.set_font(chinese_font, 'B', 16)
-            pdf.cell(0, 10, "PowerConsume 功耗计算结果", align="C", new_y=YPos.NEXT)
-            pdf.ln(8)
-
-            # === 原始结果文本（自动换行）===
-            pdf.set_font(chinese_font, '', 11)
-            for line in result_text.split('\n'):
-                if line.strip() == "":
-                    pdf.ln(4)
-                else:
-                    pdf.multi_cell(0, 6, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-            # === 工作模式表格 ===
-            if modes:
-                pdf.ln(10)
-                # 表格标题（加粗）
-                pdf.set_font(chinese_font, 'B', 12)
-                pdf.cell(0, 10, "工作模式详情", new_y=YPos.NEXT)
+            def draw_header_banner():
+                """绘制顶部渐变风格横幅"""
+                pdf.set_fill_color(*PRIMARY)
+                pdf.rect(0, 0, 210, 32, 'F')
+                pdf.set_fill_color(*SECONDARY)
+                pdf.rect(140, 0, 70, 32, 'F')
+                pdf.set_xy(10, 8)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font(chinese_font, 'B', 18)
+                pdf.cell(120, 8, "PowerConsume 功耗计算结果", new_x=XPos.RIGHT)
                 pdf.set_font(chinese_font, '', 10)
+                pdf.set_xy(10, 20)
+                pdf.cell(120, 6, f"v{__version__}  |  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                pdf.set_text_color(*TEXT_DARK)
 
-                col_widths = [30, 25, 25, 25, 25, 25]
-                headers = ["模式", "电流值", "电流单位", "时长值", "时长单位", "每天次数"]
+            def draw_section_title(title, y=None):
+                """绘制带左侧色条的章节标题"""
+                if y: pdf.set_y(y)
+                pdf.ln(6)
+                cy = pdf.get_y()
+                pdf.set_fill_color(*PRIMARY)
+                pdf.rect(10, cy, 3, 8, 'F')
+                pdf.set_x(16)
+                pdf.set_font(chinese_font, 'B', 13)
+                pdf.set_text_color(*PRIMARY)
+                pdf.cell(0, 8, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_text_color(*TEXT_DARK)
+                pdf.ln(2)
 
-                # 表头
-                for header, width in zip(headers, col_widths):
-                    pdf.cell(width, 10, header, border=1, align="C")
+            def draw_kv_row(label, value, bold_value=False):
+                """绘制键值对行"""
+                pdf.set_font(chinese_font, '', 10)
+                pdf.set_text_color(*TEXT_LIGHT)
+                pdf.cell(55, 7, label, new_x=XPos.RIGHT)
+                pdf.set_text_color(*TEXT_DARK)
+                pdf.set_font(chinese_font, 'B' if bold_value else '', 10)
+                pdf.cell(0, 7, str(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+            def draw_footer():
+                """绘制页脚"""
+                pdf.set_y(-20)
+                pdf.set_draw_color(*BORDER)
+                pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+                pdf.ln(3)
+                pdf.set_font(chinese_font, '', 8)
+                pdf.set_text_color(*TEXT_LIGHT)
+                pdf.cell(95, 5, f"PowerConsume Calculator v{__version__}  |  MIT License")
+                pdf.cell(0, 5, f"Page {pdf.page_no()}", align="R")
+                pdf.set_text_color(*TEXT_DARK)
+
+            # ==================== 第一页：标题 + 结果概览 ====================
+            draw_header_banner()
+            pdf.set_y(38)
+
+            # --- 计算结果概要 ---
+            calc_mode = result.get('type', '')
+            if calc_mode == 'battery_life':
+                draw_section_title("计算结果概要")
+
+                # 大号结果高亮框
+                days = result.get('days', 0)
+                box_y = pdf.get_y()
+                pdf.set_fill_color(*BG_LIGHT)
+                pdf.rect(10, box_y, 190, 22, 'F')
+                pdf.set_xy(15, box_y + 3)
+                pdf.set_font(chinese_font, '', 10)
+                pdf.set_text_color(*TEXT_LIGHT)
+                pdf.cell(40, 7, "电池续航时间：")
+                pdf.set_text_color(*SUCCESS)
+                pdf.set_font(chinese_font, 'B', 18)
+                pdf.cell(60, 7, f"{days:.1f} 天")
+                pdf.set_text_color(*TEXT_DARK)
+                pdf.set_font(chinese_font, '', 10)
+                pdf.cell(0, 7, f"  ({days * 24:.0f} 小时 / {days / 365.25:.2f} 年)")
+                pdf.set_xy(15, box_y + 13)
+                pdf.set_text_color(*TEXT_LIGHT)
+                pdf.cell(40, 7, "每日总能耗：")
+                pdf.set_text_color(*TEXT_DARK)
+                pdf.set_font(chinese_font, 'B', 11)
+                pdf.cell(0, 7, f"{result.get('daily_total_energy', 0):.4f} mWh/天")
+                pdf.set_y(box_y + 26)
+
+                # 详细参数
+                draw_section_title("电池参数")
+                draw_kv_row("总电压", f"{result.get('voltage', 0):.2f} V")
+                draw_kv_row("总容量", f"{result.get('capacity', 0):.1f} mAh")
+                draw_kv_row("平均电压", f"{result.get('average_voltage', 0):.2f} V")
+                draw_kv_row("总能量", f"{result.get('total_energy_mwh', 0):.1f} mWh")
+                draw_kv_row("经验系数", f"{result.get('experience_factor', 0)}")
+                draw_kv_row("可用能量", f"{result.get('usable_energy_mwh', 0):.1f} mWh", bold_value=True)
+
+            elif calc_mode == 'required_capacity':
+                draw_section_title("计算结果概要")
+
+                req_cap = result.get('required_capacity', 0)
+                box_y = pdf.get_y()
+                pdf.set_fill_color(*BG_LIGHT)
+                pdf.rect(10, box_y, 190, 22, 'F')
+                pdf.set_xy(15, box_y + 3)
+                pdf.set_font(chinese_font, '', 10)
+                pdf.set_text_color(*TEXT_LIGHT)
+                pdf.cell(50, 7, "所需电池容量：")
+                pdf.set_text_color(*SUCCESS)
+                pdf.set_font(chinese_font, 'B', 18)
+                pdf.cell(0, 7, f"{req_cap:.1f} mAh")
+                pdf.set_xy(15, box_y + 13)
+                pdf.set_text_color(*TEXT_LIGHT)
+                pdf.cell(50, 7, "所需能量：")
+                pdf.set_text_color(*TEXT_DARK)
+                pdf.set_font(chinese_font, 'B', 11)
+                pdf.cell(0, 7, f"{result.get('required_energy_mwh', 0):.1f} mWh")
+                pdf.set_y(box_y + 26)
+
+                draw_section_title("输入参数")
+                draw_kv_row("目标天数", f"{result.get('input_value', 0)} {result.get('input_unit', '天')}")
+                draw_kv_row("总电压", f"{result.get('voltage', 0):.2f} V")
+                draw_kv_row("平均电压", f"{result.get('average_voltage', 0):.2f} V")
+                draw_kv_row("经验系数", f"{result.get('experience_factor', 0)}")
+                draw_kv_row("每日总能耗", f"{result.get('daily_total_energy', 0):.4f} mWh")
+
+            # ==================== 工作模式表格 ====================
+            calc_modes = result.get('modes', [])
+            if calc_modes:
+                draw_section_title("工作模式详情")
+
+                # 表头（彩色背景）
+                col_widths = [28, 28, 18, 28, 18, 18, 24, 28]
+                headers = ["模式", "电流", "单位", "时长", "单位", "次数", "单次能耗", "每日能耗"]
+                pdf.set_fill_color(*PRIMARY)
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font(chinese_font, 'B', 9)
+                for h, w in zip(headers, col_widths):
+                    pdf.cell(w, 8, h, border=1, fill=True, align="C")
                 pdf.ln()
 
-                # 数据行
-                for mode in modes:
-                    pdf.cell(col_widths[0], 10, str(mode[0]), border=1, align="C")
-                    pdf.cell(col_widths[1], 10, str(mode[2]), border=1, align="C")
-                    pdf.cell(col_widths[2], 10, str(mode[1]), border=1, align="C")
-                    pdf.cell(col_widths[3], 10, str(mode[4]), border=1, align="C")
-                    pdf.cell(col_widths[4], 10, str(mode[3]), border=1, align="C")
-                    pdf.cell(col_widths[5], 10, str(mode[5]), border=1, align="C")
+                # 数据行（交替背景色）
+                pdf.set_text_color(*TEXT_DARK)
+                pdf.set_font(chinese_font, '', 9)
+                for i, m in enumerate(calc_modes):
+                    if i % 2 == 0:
+                        pdf.set_fill_color(*BG_LIGHT)
+                    else:
+                        pdf.set_fill_color(255, 255, 255)
+                    cells = [
+                        str(m['name']),
+                        f"{m['current_ma']:.3f}",
+                        "mA",
+                        f"{m['seconds']:.1f}",
+                        "s",
+                        str(m['times_per_day']),
+                        f"{m['energy_per_cycle_mwh']:.4f}",
+                        f"{m['daily_energy_mwh']:.4f}",
+                    ]
+                    for c, w in zip(cells, col_widths):
+                        pdf.cell(w, 7, c, border=1, fill=True, align="C")
                     pdf.ln()
 
-            # === 添加功耗分布图表 ===
-            # 1. 创建图表
-            fig, ax = plt.subplots(figsize=(10, 6))
+                # 合计行
+                pdf.set_font(chinese_font, 'B', 9)
+                pdf.set_fill_color(230, 230, 240)
+                total_daily = sum(m['daily_energy_mwh'] for m in calc_modes)
+                pdf.cell(sum(col_widths[:6]), 7, "合计每日能耗", border=1, fill=True, align="C")
+                pdf.cell(col_widths[6], 7, "", border=1, fill=True, align="C")
+                pdf.cell(col_widths[7], 7, f"{total_daily:.4f}", border=1, fill=True, align="C")
+                pdf.ln()
 
-            # 2. 准备数据
-            mode_names = [mode[0] for mode in modes]
-            energy_values = [float(mode[4]) * float(mode[5]) for mode in modes]
+            # ==================== 功耗分布图表（紧跟表格） ====================
+            if calc_modes:
+                mode_names = [m['name'] for m in calc_modes]
+                energy_values = [m['daily_energy_mwh'] for m in calc_modes]
+                total_energy = sum(energy_values)
+                percentages = [(e / total_energy * 100) if total_energy > 0 else 0 for e in energy_values]
 
-            # 3. 绘制柱状图
-            bars = ax.bar(mode_names, energy_values,
-                          color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'])
+                chart_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD',
+                                '#667eea', '#e67e22', '#48bb78', '#e53e3e']
+                bar_colors = chart_colors[:len(mode_names)]
 
-            # 4. 添加数值标签
-            for bar, value in zip(bars, energy_values):
-                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(energy_values) * 0.01, f'{value:.2f}',
-                        ha='center', va='bottom', fontsize=8)
+                # 剩余空间不足时手动换页，关闭 auto_page_break 防止自动分页
+                chart_needs_new_page = pdf.get_y() > 140
+                if chart_needs_new_page:
+                    pdf.add_page()
+                    pdf.set_y(15)
+                pdf.auto_page_break = False  # 关键：禁止自动分页
 
-            # 5. 设置图表属性
-            ax.set_xlabel('工作模式', fontsize=10)
-            ax.set_ylabel('每日能耗 (mWh)', fontsize=10)
-            ax.set_title('功耗分布图', fontsize=12)
-            ax.grid(axis='y', alpha=0.3)
+                draw_section_title("功耗分布分析")
 
-            # 6. 旋转x轴标签以避免重叠
-            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=9)
+                # 控制图表高度使其适配 A4 页面宽度
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 3))
+                fig.suptitle('功耗分布分析', fontsize=12, fontweight='bold', y=0.98)
 
-            # 7. 调整布局
-            plt.tight_layout()
+                # 柱状图
+                bars = ax1.bar(mode_names, energy_values, color=bar_colors, edgecolor='#333',
+                               linewidth=1, alpha=0.85, width=0.6)
+                for i, bar in enumerate(bars):
+                    h = bar.get_height()
+                    lbl = f'{h:.4f}' if h < 0.01 else f'{h:.2f}'
+                    ax1.annotate(lbl, xy=(bar.get_x() + bar.get_width() / 2, h),
+                                 xytext=(0, 4), textcoords='offset points',
+                                 ha='center', va='bottom', fontsize=8, fontweight='bold')
+                ax1.set_xlabel('工作模式', fontsize=10)
+                ax1.set_ylabel('每日能耗 (mWh)', fontsize=10)
+                ax1.set_title('各模式每日能耗', fontsize=11, fontweight='bold')
+                ax1.grid(axis='y', alpha=0.3, linestyle='--')
+                ax1.spines['top'].set_visible(False)
+                ax1.spines['right'].set_visible(False)
+                plt.setp(ax1.get_xticklabels(), rotation=30, ha="right", fontsize=9)
 
-            # 8. 保存图表为临时图片
-            chart_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"chart_{timestamp}.png")
-            plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                # 环形图
+                wedges, texts, autotexts = ax2.pie(
+                    energy_values, labels=mode_names, colors=bar_colors,
+                    autopct=lambda pct: f'{pct:.1f}%' if pct >= 3 else '',
+                    startangle=90, pctdistance=0.75,
+                    wedgeprops=dict(width=0.45, edgecolor='white', linewidth=2),
+                    textprops=dict(fontsize=9))
+                for at in autotexts:
+                    at.set_fontsize(9); at.set_fontweight('bold'); at.set_color('white')
+                ax2.set_title('能耗占比分布', fontsize=11, fontweight='bold')
+                legend_labels = [f'{mode_names[i]}  {percentages[i]:.1f}%' for i in range(len(mode_names))]
+                ax2.legend(wedges, legend_labels, title='工作模式', loc='center left',
+                           bbox_to_anchor=(1.0, 0, 0.5, 1), fontsize=9, title_fontsize=10)
 
-            # 9. 添加图片到PDF
-            pdf.ln(10)
-            pdf.set_font(chinese_font, 'B', 12)
-            pdf.cell(0, 10, "功耗分布图", new_y=YPos.NEXT)
-            pdf.image(chart_path, x=10, y=None, w=180)
+                plt.tight_layout()
+                chart_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"chart_{timestamp}.png")
+                fig.savefig(chart_path, dpi=200, bbox_inches='tight', pad_inches=0.2)
+                plt.close(fig)
 
-            # 10. 清理临时图片
-            plt.close(fig)  # 关闭图表以释放内存
-            os.remove(chart_path)
+                # 显式控制图片高度，避免 fpdf2 自动分页产生空白页
+                # A4 有效宽度约 190mm，图表 3 英寸高 @ 200dpi → 约 42mm
+                pdf.image(chart_path, x=10, w=190, h=48)
+                pdf.auto_page_break = True   # 恢复自动分页
+                if os.path.exists(chart_path):
+                    os.remove(chart_path)
+
+            # 绘制所有页的页脚
+            total_pages = pdf.pages_count
+            for i in range(1, total_pages + 1):
+                pdf.page = i
+                draw_footer()
 
             pdf.output(file_path)
             messagebox.showinfo("成功", f"PDF 已成功导出至：\n{file_path}")
@@ -1177,7 +1316,7 @@ class PowerConsumeCalculator:
             messagebox.showerror("导出失败", f"生成 PDF 时出错：\n{str(e)}")
 
     def show_chart(self):
-        """显示功耗分布图"""
+        """显示功耗分布图（柱状图 + 环形图）"""
         if not hasattr(self, 'last_calculation_result'):
             messagebox.showwarning("警告", "请先执行计算")
             return
@@ -1187,32 +1326,75 @@ class PowerConsumeCalculator:
         names = [mode['name'] for mode in modes]
         daily_energy_mwh = [mode['daily_energy_mwh'] for mode in modes]
 
-        # 创建图表
-        fig, ax = plt.subplots(figsize=(10, 6))
-        bars = ax.bar(names, daily_energy_mwh, color=['red', 'blue', 'green', 'orange'], alpha=0.7)
+        total_energy = sum(daily_energy_mwh)
+        if total_energy == 0:
+            messagebox.showwarning("警告", "每日总能耗为 0，无法绘制图表")
+            return
+        percentages = [e / total_energy * 100 for e in daily_energy_mwh]
 
-        # 添加数值标签
+        # 配色方案（与网页版一致）
+        chart_colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD',
+                        '#667eea', '#e67e22', '#48bb78', '#e53e3e']
+        bar_colors = chart_colors[:len(names)]
+        border_colors = ['#c0392b', '#16a085', '#2980b9', '#27ae60', '#f39c12', '#8e44ad',
+                         '#5a67d8', '#d35400', '#38a169', '#c0392b']
+
+        # 创建双图表窗口
+        chart_window = tk.Toplevel(self.root)
+        chart_window.title(f"功耗分布图 - PowerConsume v{__version__}")
+        chart_window.geometry("1200x550")
+        chart_window.configure(bg=COLORS["bg"])
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5), facecolor=COLORS["bg"])
+        fig.suptitle('功耗分布分析', fontsize=16, fontweight='bold', y=0.98)
+
+        # ============ 左侧：柱状图（标注数值）============
+        bars = ax1.bar(names, daily_energy_mwh, color=bar_colors, edgecolor=border_colors,
+                       linewidth=1.5, alpha=0.85, width=0.6)
         for i, bar in enumerate(bars):
             height = bar.get_height()
-            ax.annotate(f'{height:.2f}',
-                        xy=(bar.get_x() + bar.get_width()/2, height),
-                        xytext=(0, 3),  # 3 points vertical offset
-                        textcoords='offset points',
-                        ha='center', va='bottom')
+            label = f'{height:.4f}' if height < 0.01 else f'{height:.2f}'
+            ax1.annotate(label,
+                         xy=(bar.get_x() + bar.get_width() / 2, height),
+                         xytext=(0, 5), textcoords='offset points',
+                         ha='center', va='bottom', fontsize=11, fontweight='bold',
+                         color=COLORS["text"])
 
-        ax.set_xlabel('工作模式')
-        ax.set_ylabel('每日能耗 (mWh)')
-        ax.set_title('功耗分布图')
-        ax.grid(axis='y', alpha=0.3)
+        ax1.set_xlabel('工作模式', fontsize=12)
+        ax1.set_ylabel('每日能耗 (mWh)', fontsize=12)
+        ax1.set_title('各模式每日能耗', fontsize=14, fontweight='bold', pad=10)
+        ax1.grid(axis='y', alpha=0.3, linestyle='--')
+        ax1.set_facecolor(COLORS["bg"])
+        ax1.spines['top'].set_visible(False)
+        ax1.spines['right'].set_visible(False)
 
-        # 显示图表
-        chart_window = tk.Toplevel(self.root)
-        chart_window.title("功耗分布图")
-        chart_window.geometry("800x600")
+        # ============ 右侧：环形图（标注百分比）============
+        wedges, texts, autotexts = ax2.pie(
+            daily_energy_mwh, labels=names, colors=bar_colors,
+            autopct=lambda pct: f'{pct:.1f}%' if pct >= 3 else '',
+            startangle=90, pctdistance=0.75,
+            wedgeprops=dict(width=0.45, edgecolor='white', linewidth=2),
+            textprops=dict(fontsize=11)
+        )
+        # 百分比文字样式
+        for at in autotexts:
+            at.set_fontsize(11)
+            at.set_fontweight('bold')
+            at.set_color('white')
+
+        ax2.set_title('能耗占比分布', fontsize=14, fontweight='bold', pad=10)
+
+        # 右侧图例：模式名 + 百分比
+        legend_labels = [f'{names[i]}  {percentages[i]:.1f}%  ({daily_energy_mwh[i]:.2f} mWh)'
+                         for i in range(len(names))]
+        ax2.legend(wedges, legend_labels, title='工作模式', loc='center left',
+                   bbox_to_anchor=(1.0, 0, 0.5, 1), fontsize=10, title_fontsize=11)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
 
         canvas = FigureCanvasTkAgg(fig, chart_window)
         canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
 
 def on_closing():
     # 执行清理操作

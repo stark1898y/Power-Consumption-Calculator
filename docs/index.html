@@ -2,7 +2,7 @@
  * @Author: stark1898y 1658608470@qq.com
  * @Date: 2026-06-22 13:52:31
  * @LastEditors: stark1898y 1658608470@qq.com
- * @LastEditTime: 2026-06-22 14:32:29
+ * @LastEditTime: 2026-06-24 09:16:38
  * @FilePath: \power-consumption-calculator\docs\index.html
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -342,8 +342,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>⚡ PowerConsume 功耗计算器 <small style="font-size: 0.5em; vertical-align: middle; opacity: 0.7;">v1.0.0</small></h1>
-        <p style="text-align: center; color: #718096; margin-bottom: 10px;">计算设备电池续航时间或所需电池容量</p>
+        <h1>⚡ PowerConsume 功耗计算器</h1>
+        <p style="text-align: center; color: #718096; margin-bottom: 10px;">v1.0.0 | 计算设备电池续航时间或所需电池容量</p>
         <div style="text-align: center; margin-bottom: 30px;">
             <a href="https://github.com/stark1898y/Power-Consumption-Calculator" target="_blank" style="margin: 0 15px; color: #333; text-decoration: none; font-weight: 500;">⭐ GitHub</a>
             <a href="https://gitee.com/stark1898/power-consumption-calculator" target="_blank" style="margin: 0 15px; color: #c71d23; text-decoration: none; font-weight: 500;">⭐ Gitee（国内）</a>
@@ -978,7 +978,7 @@
             if (energyChart) energyChart.destroy();
             if (percentageChart) percentageChart.destroy();
 
-            // 柱状图 - 每日能耗
+            // 柱状图 - 每日能耗（顶部标注数值）
             const ctx1 = document.getElementById('energyChart').getContext('2d');
             energyChart = new Chart(ctx1, {
                 type: 'bar',
@@ -1028,10 +1028,27 @@
                             }
                         }
                     }
-                }
+                },
+                plugins: [{
+                    id: 'barValueLabels',
+                    afterDatasetsDraw(chart) {
+                        const { ctx, data, scales: { x, y } } = chart;
+                        ctx.save();
+                        data.datasets[0].data.forEach((value, i) => {
+                            const xPos = x.getPixelForValue(i);
+                            const yPos = y.getPixelForValue(value);
+                            ctx.fillStyle = '#2d3748';
+                            ctx.font = 'bold 12px -apple-system, sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            ctx.fillText(value < 0.01 ? value.toExponential(2) : value.toFixed(2), xPos, yPos - 6);
+                        });
+                        ctx.restore();
+                    }
+                }]
             });
 
-            // 饼图 - 能耗占比
+            // 饼图 - 能耗占比（扇形标注百分比）
             const ctx2 = document.getElementById('percentageChart').getContext('2d');
             percentageChart = new Chart(ctx2, {
                 type: 'doughnut',
@@ -1053,6 +1070,25 @@
                             text: '能耗占比分布',
                             font: { size: 16, weight: 'bold' }
                         },
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                padding: 15,
+                                font: { size: 13 },
+                                usePointStyle: true,
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    return data.labels.map((label, i) => ({
+                                        text: `${label}  ${percentages[i]}%`,
+                                        fillStyle: colors[i],
+                                        strokeStyle: borderColors[i],
+                                        lineWidth: 2,
+                                        index: i,
+                                        pointStyle: 'rectRounded'
+                                    }));
+                                }
+                            }
+                        },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -1062,7 +1098,30 @@
                             }
                         }
                     }
-                }
+                },
+                plugins: [{
+                    id: 'doughnutPercentLabels',
+                    afterDraw(chart) {
+                        const { ctx, data } = chart;
+                        const meta = chart.getDatasetMeta(0);
+                        ctx.save();
+                        meta.data.forEach((arc, i) => {
+                            const pct = percentages[i];
+                            if (pct < 3) return; // 占比太小不标注，避免拥挤
+                            const pos = arc.tooltipPosition();
+                            ctx.fillStyle = '#fff';
+                            ctx.font = 'bold 13px -apple-system, sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            // 深色背景上白色文字加阴影
+                            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+                            ctx.shadowBlur = 3;
+                            ctx.fillText(`${pct}%`, pos.x, pos.y);
+                            ctx.shadowColor = 'transparent';
+                        });
+                        ctx.restore();
+                    }
+                }]
             });
         }
 
