@@ -343,7 +343,10 @@
 <body>
     <div class="container">
         <h1>⚡ PowerConsume 功耗计算器</h1>
-        <p style="text-align: center; color: #718096; margin-bottom: 10px;">v1.0.0 | 计算设备电池续航时间或所需电池容量</p>
+        <p style="text-align: center; color: #718096; margin-bottom: 10px;">v1.0.0 | 设计前期评估设备电池续航或所需电池容量</p>
+        <div style="text-align: center; margin-bottom: 5px;">
+            <span style="color: #a0aec0; font-size: 12px;">提示：计算结果为理论估算值，仅供前期评估参考，最终续航请以硬件实测为准</span>
+        </div>
         <div style="text-align: center; margin-bottom: 30px;">
             <a href="https://github.com/stark1898y/Power-Consumption-Calculator" target="_blank" style="margin: 0 15px; color: #333; text-decoration: none; font-weight: 500;">⭐ GitHub</a>
             <a href="https://gitee.com/stark1898/power-consumption-calculator" target="_blank" style="margin: 0 15px; color: #c71d23; text-decoration: none; font-weight: 500;">⭐ Gitee（国内）</a>
@@ -584,7 +587,7 @@
 
     <script>
         /**
-         * PowerConsume 功耗计算器 - 纯前端版本
+         * PowerConsume 功耗计算器 - 纯前端版（设计前期评估用）
          * 包含 Chart.js 图表功能
          */
 
@@ -899,7 +902,7 @@
         // ==================== 结果显示函数 ====================
 
         function displayResult(result) {
-            let html = "<h3>📊 计算结果</h3>";
+            let html = "<h3>📊 估算结果（仅供前期评估参考）</h3>";
 
             if (result.type === "battery_life") {
                 html += `
@@ -941,6 +944,7 @@
                 html += `<li><strong>${mode.name}:</strong> ${mode.current_ma.toFixed(2)} mA, ${mode.seconds.toFixed(2)} s, ${mode.daily_energy_mwh.toFixed(4)} mWh/天</li>`;
             });
             html += "</ul>";
+            html += `<p style="color: #a0aec0; font-size: 12px; margin-top: 15px;">⚠ 以上为理论估算值，仅供设计前期评估参考，最终续航请以硬件实测为准。</p>`;
 
             document.getElementById("result").innerHTML = html;
         }

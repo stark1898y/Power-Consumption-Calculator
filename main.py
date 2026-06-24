@@ -1,7 +1,9 @@
 # main.py
 """
 PowerConsume 功耗计算器
-支持多种电池类型，计算设备续航时间或所需电池容量。
+用于设计前期评估嵌入式设备电池续航或所需电池容量。
+支持多种电池类型和混合工作模式。
+计算结果为理论估算值，最终续航需以实测为准。
 """
 
 # ==================== 版本信息 ====================
@@ -120,9 +122,14 @@ class PowerConsumeCalculator:
             fg="#b8c4ff", bg=COLORS["primary"]
         ).pack(side="left", pady=15)
 
-        # 右侧按钮
+        # 右侧按钮 & 提示
         btn_frame = tk.Frame(header, bg=COLORS["primary"])
         btn_frame.pack(side="right", padx=20, pady=15)
+        tk.Label(
+            btn_frame, text="仅供设计前期评估参考，最终续航请以硬件实测为准",
+            font=("Microsoft YaHei UI", 9),
+            fg="#ffd6a0", bg=COLORS["primary"]
+        ).pack(side="right", padx=(0, 15))
         self._make_header_btn(btn_frame, "关于", self.show_about).pack(side="right", padx=5)
 
         # ==================== 可滚动主区域 ====================
@@ -322,7 +329,7 @@ class PowerConsumeCalculator:
             self._make_action_btn(action_card, text, cmd, color_key).pack(side="left", padx=4, pady=8)
 
         # ==================== 结果展示卡片 ====================
-        result_card = self._make_card(main_frame, "📋 计算结果")
+        result_card = self._make_card(main_frame, "📋 计算结果（仅供前期评估参考）")
         result_card.grid(row=4, column=0, sticky="nsew", padx=5, pady=6)
         main_frame.rowconfigure(4, weight=1)
 
@@ -391,9 +398,10 @@ class PowerConsumeCalculator:
             f"版本: v{__version__}\n"
             f"作者: {__author__}\n"
             f"许可证: {__license__}\n\n"
-            f"功能: 电池续航与容量计算\n"
+            f"功能: 电池续航与容量前期估算\n"
             f"支持: 锂电池 / 锂亚电池 / 碱性干电池\n"
             f"      串并联配置 / 多工作模式 / PDF导出\n\n"
+            f"注意: 结果为理论估算值，最终续航需以实测为准\n\n"
             f"GitHub: github.com/stark1898y/Power-Consumption-Calculator\n"
             f"Gitee:  gitee.com/stark1898/power-consumption-calculator"
         )
@@ -801,7 +809,7 @@ class PowerConsumeCalculator:
         self.result_text.configure(state="normal")
         self.result_text.delete(1.0, tk.END)
 
-        self.result_text.insert(tk.END, "  🔋 续航时间计算结果\n\n", "title")
+        self.result_text.insert(tk.END, "  🔋 续航时间估算结果\n\n", "title")
         self.result_text.insert(tk.END, "─" * 50 + "\n", "separator")
         self.result_text.insert(tk.END, "  电池参数\n", "label")
         self.result_text.insert(tk.END, f"    总电压:     ", "label")
@@ -831,6 +839,9 @@ class PowerConsumeCalculator:
             self.result_text.insert(tk.END,
                 f"{mode['current_ma']:.2f} mA, {mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n", "label")
 
+        self.result_text.insert(tk.END, "\n  ⚠ 提示: 以上为理论估算值，仅供设计前期评估参考，\n", "label")
+        self.result_text.insert(tk.END, "      最终续航数据请以硬件实测为准。\n", "label")
+
         self.result_text.configure(state="disabled")
 
         self.last_calculation_result = {
@@ -852,7 +863,7 @@ class PowerConsumeCalculator:
         self.result_text.configure(state="normal")
         self.result_text.delete(1.0, tk.END)
 
-        self.result_text.insert(tk.END, "  📏 所需容量计算结果\n\n", "title")
+        self.result_text.insert(tk.END, "  📏 所需容量估算结果\n\n", "title")
         self.result_text.insert(tk.END, "─" * 50 + "\n", "separator")
         self.result_text.insert(tk.END, "  输入参数\n", "label")
         self.result_text.insert(tk.END, f"    目标续航:   ", "label")
@@ -871,6 +882,9 @@ class PowerConsumeCalculator:
             self.result_text.insert(tk.END, f"    • {mode['name']}: ", "value")
             self.result_text.insert(tk.END,
                 f"{mode['current_ma']:.2f} mA, {mode['seconds']:.2f} s, {mode['daily_energy_mwh']:.4f} mWh/天\n", "label")
+
+        self.result_text.insert(tk.END, "\n  ⚠ 提示: 以上为理论估算值，仅供设计前期评估参考，\n", "label")
+        self.result_text.insert(tk.END, "      最终容量需求请以硬件实测修正。\n", "label")
 
         self.result_text.configure(state="disabled")
 
@@ -1079,7 +1093,7 @@ class PowerConsumeCalculator:
                 pdf.set_xy(10, 8)
                 pdf.set_text_color(255, 255, 255)
                 pdf.set_font(chinese_font, 'B', 18)
-                pdf.cell(120, 8, "PowerConsume 功耗计算结果", new_x=XPos.RIGHT)
+                pdf.cell(120, 8, "PowerConsume 功耗估算结果", new_x=XPos.RIGHT)
                 pdf.set_font(chinese_font, '', 10)
                 pdf.set_xy(10, 20)
                 pdf.cell(120, 6, f"v{__version__}  |  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -1118,16 +1132,18 @@ class PowerConsumeCalculator:
                 pdf.set_text_color(*TEXT_LIGHT)
                 pdf.cell(95, 5, f"PowerConsume Calculator v{__version__}  |  MIT License")
                 pdf.cell(0, 5, f"Page {pdf.page_no()}", align="R")
+                pdf.set_font(chinese_font, '', 7)
+                pdf.cell(0, 5, "提示: 以上为理论估算值，最终续航请以硬件实测为准", align="C")
                 pdf.set_text_color(*TEXT_DARK)
 
             # ==================== 第一页：标题 + 结果概览 ====================
             draw_header_banner()
             pdf.set_y(38)
 
-            # --- 计算结果概要 ---
+            # --- 估算结果概要 ---
             calc_mode = result.get('type', '')
             if calc_mode == 'battery_life':
-                draw_section_title("计算结果概要")
+                draw_section_title("估算结果概要")
 
                 # 大号结果高亮框
                 days = result.get('days', 0)
@@ -1162,7 +1178,7 @@ class PowerConsumeCalculator:
                 draw_kv_row("可用能量", f"{result.get('usable_energy_mwh', 0):.1f} mWh", bold_value=True)
 
             elif calc_mode == 'required_capacity':
-                draw_section_title("计算结果概要")
+                draw_section_title("估算结果概要")
 
                 req_cap = result.get('required_capacity', 0)
                 box_y = pdf.get_y()
