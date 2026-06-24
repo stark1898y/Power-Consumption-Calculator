@@ -109,10 +109,6 @@ python main.py
 - **GitHub**：[https://github.com/stark1898y/Power-Consumption-Calculator](https://github.com/stark1898y/Power-Consumption-Calculator)
 - **Gitee（国内）**：[https://gitee.com/stark1898/power-consumption-calculator](https://gitee.com/stark1898/power-consumption-calculator)
 
-## 文档
-
-- [博客文章：嵌入式设备电池续航的前期估算与选型工具](./blog/power-consume-calculator-guide.md)
-
 ## 参考
 
 - [PowerConsume功耗计算器](https://blog.csdn.net/yufm/article/details/134437810)
