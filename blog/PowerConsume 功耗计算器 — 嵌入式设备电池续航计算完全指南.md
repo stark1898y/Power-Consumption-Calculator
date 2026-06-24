@@ -638,10 +638,10 @@ graph LR
 
 > 🔗 **在线体验**：[https://stark1898y.github.io/Power-Consumption-Calculator/](https://stark1898y.github.io/Power-Consumption-Calculator/)
 
-|   平台   |                                                链接                                                |   说明   |
-| :-------: | :------------------------------------------------------------------------------------------------: | :------: |
-| ⭐ GitHub | [stark1898y/Power-Consumption-Calculator](https://github.com/stark1898y/Power-Consumption-Calculator) |  主仓库  |
-| 🚀 Gitee |  [stark1898/power-consumption-calculator](https://gitee.com/stark1898/power-consumption-calculator)  | 国内镜像 |
+|   平台   |                                                         链接                                                         |   说明   |
+| :-------: | :-------------------------------------------------------------------------------------------------------------------: | :------: |
+| ⭐ GitHub | [https://github.com/stark1898y/Power-Consumption-Calculator](https://github.com/stark1898y/Power-Consumption-Calculator) |  主仓库  |
+| 🚀 Gitee |   [https://gitee.com/stark1898/power-consumption-calculator](https://gitee.com/stark1898/power-consumption-calculator)   | 国内镜像 |
 
 欢迎 **Star** | **Fork** | **Issue**
 
