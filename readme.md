@@ -31,6 +31,10 @@
 
 **GitHub Pages**：[点击访问在线计算器](https://stark1898y.github.io/Power-Consumption-Calculator/)
 
+## 文档
+
+- [博客文章：嵌入式设备电池续航的前期估算与选型工具](./blog/power-consume-calculator-guide.md)
+
 ## 项目结构
 
 ```
@@ -104,6 +108,10 @@ python main.py
 
 - **GitHub**：[https://github.com/stark1898y/Power-Consumption-Calculator](https://github.com/stark1898y/Power-Consumption-Calculator)
 - **Gitee（国内）**：[https://gitee.com/stark1898/power-consumption-calculator](https://gitee.com/stark1898/power-consumption-calculator)
+
+## 文档
+
+- [博客文章：嵌入式设备电池续航的前期估算与选型工具](./blog/power-consume-calculator-guide.md)
 
 ## 参考
 
