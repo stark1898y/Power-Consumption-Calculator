@@ -144,6 +144,8 @@ python main.py
 
 ![web截图](images/web.png)
 
+![web图表](images/web图表.png)
+
 ---
 
 ## 四、核心计算公式
